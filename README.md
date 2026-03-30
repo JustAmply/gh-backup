@@ -1,109 +1,177 @@
-# GitHub Backup Container
+# GitHub Backup
 
-A single-container GitHub backup stack built with:
+Run a scheduled GitHub backup in Docker.
 
-- `ghorg` for repository and wiki Git mirrors
-- `github-backup` for issues, pull requests, releases, attachments, gists, and other GitHub metadata
-- `supercronic` for in-container scheduling
+This container creates a local archive of the GitHub account and organizations you choose. It mirrors repositories and wikis, pulls Git LFS objects, and exports GitHub metadata such as issues, pull requests, releases, comments, and attachments.
 
-All backup data is written to a Docker volume mounted at `/data`.
+## What You Get
 
-## Scope
+- repository mirrors with full Git history
+- wiki mirrors
+- Git LFS objects
+- issues, pull requests, comments, labels, milestones, and releases
+- release assets and issue / pull request attachments
+- personal gists, starred items, watched repos, followers, and following for your main account
+- automatic scheduled runs inside the container
 
-This setup backs up:
+Not included:
 
-- full Git history for all mirrored repositories
-- wikis as Git mirrors
-- Git LFS objects for mirrored repositories
-- issues, issue comments, and issue events
-- pull requests, review comments, pull commits, and pull details
-- labels and milestones
-- releases and release assets
-- issue and pull request attachments
-- personal gists, starred gists, starred repos, watched repos, followers, and following for `GITHUB_OWNER`
-
-Not included in v1:
-
-- discussions
-- projects
-- packages
+- Discussions
+- Projects
+- Packages
 - GitHub Actions artifacts
-- webhooks
+- Webhooks
 
-## Requirements
+## Quick Start Guide
 
-- Docker 29+ with Compose
-- a GitHub Personal Access Token provided through `GITHUB_TOKEN`
+### 1. Prerequisites
 
-The default and recommended setup is a Classic PAT with these scopes:
+- Docker with Compose
+- a GitHub Personal Access Token in `GITHUB_TOKEN`
 
-- `repo`
-- `read:org`
-- `gist`
+### 2. Create Your `.env`
 
-A Fine-Grained PAT may work for some cases, but it is not the default because `github-backup` documents limitations around private attachments.
-
-## Quick Start
-
-1. Copy `.env.example` to `.env`.
-2. Set `GITHUB_OWNER` and `GITHUB_TOKEN` in `.env`.
-3. Start the stack:
+Copy the example file to `.env`:
 
 ```bash
-docker compose up -d --build
+cp .env.example .env
 ```
 
-Run a one-off backup immediately:
+On PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Set at least these values:
+
+```dotenv
+GITHUB_OWNER=your-github-username
+GITHUB_TOKEN=your-token-here
+```
+
+Optional:
+
+- `GITHUB_ORGS` for extra orgs, comma-separated
+- `BACKUP_CRON` to change the schedule
+- `TZ` to change the timezone
+
+### 3. Start the Backup Container
+
+```bash
+docker compose up -d
+```
+
+What happens next:
+
+- the container validates the config
+- it runs one backup immediately if `RUN_ON_STARTUP=true`
+- it keeps running and executes future backups on the cron schedule
+
+### 4. Run a Backup Right Now
 
 ```bash
 docker compose run --rm gh-backup backup-now
 ```
 
-Only validate configuration and installed tooling:
+### 5. Validate Without Running a Backup
 
 ```bash
 docker compose run --rm gh-backup validate
 ```
 
+## How To Create the GitHub PAT
+
+This project is designed around a **Personal Access Token (Classic)**.
+
+GitHub docs:
+
+- [Managing your personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+- [Creating a personal access token (classic)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic)
+
+### Recommended Token Type
+
+Choose **Tokens (classic)**, not fine-grained, for the default setup here.
+
+Reason:
+
+- this backup stack combines `ghorg` and `github-backup`
+- classic tokens are the most predictable choice for full-account backups
+- fine-grained tokens can be more restrictive and may not cover every backup case cleanly
+
+### Steps
+
+1. Open GitHub.
+2. Go to `Settings`.
+3. Go to `Developer settings`.
+4. Open `Personal access tokens`.
+5. Select `Tokens (classic)`.
+6. Click `Generate new token`, then `Generate new token (classic)`.
+7. Give it a note like `gh-backup`.
+8. Choose an expiration that fits your risk tolerance.
+9. Select the scopes below.
+10. Click `Generate token`.
+11. Copy the token immediately and put it into `.env` as `GITHUB_TOKEN`.
+
+### What To Select
+
+Select these classic PAT scopes:
+
+- `repo`
+- `read:org`
+- `gist`
+
+Why these scopes:
+
+- `repo`: backs up repositories, issues, pull requests, releases, and private repo data
+- `read:org`: lets the backup read organization membership and org-owned resources you can access
+- `gist`: backs up your gists
+
+If your organization uses SSO, GitHub may also require you to authorize the token for that organization after creation.
+
 ## Configuration
 
-The Compose file reads these environment variables:
+The container reads these environment variables from `.env`:
 
-- `GITHUB_OWNER`: personal account name, required
-- `GITHUB_ORGS`: optional comma-separated list of additional organizations
-- `GITHUB_TOKEN`: GitHub token, default and preferred authentication method
-- `BACKUP_CRON`: default `17 2 * * *`
-- `TZ`: default `Europe/Berlin`
-- `RUN_ON_STARTUP`: `true` or `false`
-- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`
+- `GITHUB_OWNER`: your personal GitHub username, required
+- `GITHUB_ORGS`: optional comma-separated organizations to back up too
+- `GITHUB_TOKEN`: your GitHub PAT, required
+- `BACKUP_CRON`: cron schedule, default `17 2 * * *`
+- `TZ`: timezone, default `Europe/Berlin`
+- `RUN_ON_STARTUP`: `true` or `false`, default `true`
+- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
 
-If `RUN_ON_STARTUP=true`, the container runs one backup immediately after startup and then switches to scheduler mode.
-
-Store the token in `.env`:
+Example:
 
 ```dotenv
+GITHUB_OWNER=octocat
+GITHUB_ORGS=my-company,my-side-project-org
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+BACKUP_CRON=17 2 * * *
+TZ=Europe/Berlin
+RUN_ON_STARTUP=true
+GHORG_INCLUDE_SUBMODULES=true
 ```
 
-## Data Layout
+## Where the Backup Is Stored
 
-The container writes this structure under `/data`:
+All data is written to the Docker volume mounted at `/data`.
 
-- `/data/mirrors/<target>_backup/` for repository and wiki mirrors
-- `/data/metadata/<target>/` for `github-backup` exports
-- `/data/state/last-success.json` for the last successful full run
+Inside the container, the layout looks like this:
+
+- `/data/mirrors/<target>_backup/` for repo and wiki mirrors
+- `/data/metadata/<target>/` for exported GitHub metadata
+- `/data/state/last-success.json` for the last successful run
 - `/data/logs/` for run logs
 
-## GitHub Actions
+With the default Compose setup, Docker manages that storage in the `gh_backup_data` volume.
 
-The workflow in `.github/workflows/docker-image.yml`:
+## What This Is Good For
 
-- builds the image on pull requests
-- runs `validate` inside the built container
-- publishes multi-arch images for `linux/amd64` and `linux/arm64` to GHCR on `main` and `v*` tags
+Use this when you want:
 
-On `main`, it publishes `edge` and `sha-<shortsha>`. On semver tags `vX.Y.Z`, it publishes `X.Y.Z`, `X.Y`, `X`, and `latest`.
+- a local archive of your GitHub account
+- a scheduled Docker-based backup instead of ad hoc exports
+- repository mirrors plus metadata exports in one place
 
-## Restore Notes
-
-This project is a backup and archive stack, not a restore product. Git mirrors can later be restored with `git push --mirror` to a new remote. GitHub metadata is exported as archive data.
+This is a backup and archive setup, not a one-click restore product. Git mirrors can later be pushed to a new remote with `git push --mirror`. Exported metadata is stored as archive data for recovery and reference.
