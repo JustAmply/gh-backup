@@ -1,104 +1,128 @@
 # GitHub Backup Container
 
-Ein einzelner Container fuer regelmaessige GitHub-Backups mit:
+A single-container GitHub backup stack built with:
 
-- `ghorg` fuer Git-Mirrors von Repositories und Wikis
-- `github-backup` fuer Issues, Pull Requests, Releases, Attachments, Gists und weitere GitHub-Metadaten
-- `supercronic` fuer den internen Scheduler
+- `ghorg` for repository and wiki Git mirrors
+- `github-backup` for issues, pull requests, releases, attachments, gists, and other GitHub metadata
+- `supercronic` for in-container scheduling
 
-Der Container schreibt alle Daten in ein Docker-Volume unter `/data`.
+All backup data is written to a Docker volume mounted at `/data`.
 
 ## Scope
 
-Dieses Setup sichert standardmaessig:
+This setup backs up:
 
-- vollstaendige Git-Historie aller gespiegelten Repositories
-- Wikis als Git-Mirror
-- Git LFS Inhalte fuer gespiegelte Repositories
-- Issues, Issue-Comments und Issue-Events
-- Pull Requests, Review-Kommentare, Pull-Commits und Pull-Details
-- Labels und Milestones
-- Releases inklusive Assets
-- Attachments aus Issues und Pull Requests
-- persoenliche Gists, Starred Gists, Starred, Watched, Followers und Following fuer den `GITHUB_OWNER`
+- full Git history for all mirrored repositories
+- wikis as Git mirrors
+- Git LFS objects for mirrored repositories
+- issues, issue comments, and issue events
+- pull requests, review comments, pull commits, and pull details
+- labels and milestones
+- releases and release assets
+- issue and pull request attachments
+- personal gists, starred gists, starred repos, watched repos, followers, and following for `GITHUB_OWNER`
 
-Nicht enthalten in v1:
+Not included in v1:
 
-- Discussions
-- Projects
-- Packages
-- Actions-Artefakte
-- Webhooks
+- discussions
+- projects
+- packages
+- GitHub Actions artifacts
+- webhooks
 
-## Voraussetzungen
+## Requirements
 
-- Docker 29+ mit Compose
-- Ein GitHub Personal Access Token in `secrets/github_token.txt`
+- Docker 29+ with Compose
+- a GitHub Personal Access Token provided either by environment variable or an optional mounted token file
 
-Empfohlener Default ist ein Classic PAT mit diesen Scopes:
+The default and recommended setup is a Classic PAT with these scopes:
 
 - `repo`
 - `read:org`
 - `gist`
 
-Ein Fine-Grained PAT kann fuer manche Faelle funktionieren, ist hier aber nicht der Default, weil `github-backup` bei privaten Attachments Einschränkungen dokumentiert.
+A Fine-Grained PAT may work for some cases, but it is not the default because `github-backup` documents limitations around private attachments.
 
-## Schnellstart
+## Quick Start
 
-1. `.env.example` nach `.env` kopieren und Werte anpassen.
-2. `secrets/github_token.txt` mit dem PAT anlegen.
-3. Container starten:
+1. Copy `.env.example` to `.env`.
+2. Set `GITHUB_OWNER` and `GITHUB_TOKEN` in `.env`.
+3. Start the stack:
 
 ```bash
 docker compose up -d --build
 ```
 
-Ein Einmallauf fuer einen direkten Test:
+Run a one-off backup immediately:
 
 ```bash
 docker compose run --rm gh-backup backup-now
 ```
 
-Nur Konfiguration und Binaerdateien pruefen:
+Only validate configuration and installed tooling:
 
 ```bash
 docker compose run --rm gh-backup validate
 ```
 
-## Konfiguration
+## Configuration
 
-Die Compose-Datei liest diese Umgebungsvariablen:
+The Compose file reads these environment variables:
 
-- `GITHUB_OWNER`: persoenlicher Accountname, Pflichtwert
-- `GITHUB_ORGS`: optionale kommaseparierte Liste zusaetzlicher Orgs
-- `GITHUB_TOKEN_FILE`: Default `/run/secrets/github_token`
-- `BACKUP_CRON`: Default `17 2 * * *`
-- `TZ`: Default `Europe/Berlin`
-- `RUN_ON_STARTUP`: `true` oder `false`
-- `GHORG_INCLUDE_SUBMODULES`: `true` oder `false`
+- `GITHUB_OWNER`: personal account name, required
+- `GITHUB_ORGS`: optional comma-separated list of additional organizations
+- `GITHUB_TOKEN`: GitHub token, default and preferred authentication method
+- `GITHUB_TOKEN_FILE`: optional path to a mounted token file; used only when `GITHUB_TOKEN` is not set
+- `BACKUP_CRON`: default `17 2 * * *`
+- `TZ`: default `Europe/Berlin`
+- `RUN_ON_STARTUP`: `true` or `false`
+- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`
 
-Wenn `RUN_ON_STARTUP=true` gesetzt ist, fuehrt der Container direkt nach dem Start einen Backup-Lauf aus und wechselt danach in den Scheduler-Modus.
+If `RUN_ON_STARTUP=true`, the container runs one backup immediately after startup and then switches to scheduler mode.
 
-## Datenlayout
+## Authentication Modes
 
-Unter `/data` wird folgende Struktur aufgebaut:
+### Default: environment variable
 
-- `/data/mirrors/<target>_backup/` fuer Repo- und Wiki-Mirrors
-- `/data/metadata/<target>/` fuer `github-backup` Exporte
-- `/data/state/last-success.json` fuer den letzten erfolgreichen Gesamtlauf
-- `/data/logs/` fuer Laufprotokolle
+Store the token in `.env`:
+
+```dotenv
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+### Optional: token file
+
+If you prefer a mounted file, leave `GITHUB_TOKEN` empty, set `GITHUB_TOKEN_FILE`, and mount the file yourself through a Compose override or `docker run`.
+
+Example:
+
+```bash
+docker run --rm \
+  -e GITHUB_OWNER=your-user \
+  -e GITHUB_TOKEN_FILE=/run/secrets/github_token \
+  -v "$PWD/secrets/github_token.txt:/run/secrets/github_token:ro" \
+  gh-backup:local validate
+```
+
+## Data Layout
+
+The container writes this structure under `/data`:
+
+- `/data/mirrors/<target>_backup/` for repository and wiki mirrors
+- `/data/metadata/<target>/` for `github-backup` exports
+- `/data/state/last-success.json` for the last successful full run
+- `/data/logs/` for run logs
 
 ## GitHub Actions
 
-Der Workflow in `.github/workflows/docker-image.yml`:
+The workflow in `.github/workflows/docker-image.yml`:
 
-- baut das Image auf Pull Requests
-- fuehrt `validate` im gebauten Container aus
-- published Multi-Arch Images fuer `linux/amd64` und `linux/arm64` nach GHCR auf `main` und `v*` Tags
+- builds the image on pull requests
+- runs `validate` inside the built container
+- publishes multi-arch images for `linux/amd64` and `linux/arm64` to GHCR on `main` and `v*` tags
 
-Auf `main` werden `edge` und `sha-<shortsha>` veroeffentlicht. Semver-Tags `vX.Y.Z` erzeugen `X.Y.Z`, `X.Y`, `X` und `latest`.
+On `main`, it publishes `edge` and `sha-<shortsha>`. On semver tags `vX.Y.Z`, it publishes `X.Y.Z`, `X.Y`, `X`, and `latest`.
 
-## Restore-Hinweis
+## Restore Notes
 
-Dieses Projekt ist ein Backup/Archiv-Stack, kein Restore-Produkt. Git-Mirror koennen spaeter mit `git push --mirror` in ein neues Remote zurueckgespielt werden. GitHub-Metadaten werden als Archivdaten exportiert.
-
+This project is a backup and archive stack, not a restore product. Git mirrors can later be restored with `git push --mirror` to a new remote. GitHub metadata is exported as archive data.
