@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ARG TARGETARCH
 ARG GHORG_VERSION=v1.11.10
