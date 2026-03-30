@@ -74,7 +74,7 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
