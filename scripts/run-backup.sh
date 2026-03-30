@@ -39,6 +39,16 @@ dedupe_targets() {
   done
 }
 
+configure_github_https_auth() {
+  export GHORG_GITHUB_TOKEN="${GITHUB_TOKEN}"
+
+  # ghorg uses git for cloning. Configure a non-interactive credential helper so
+  # private HTTPS clones succeed inside the container as well.
+  git config --global url."https://github.com/".insteadOf git@github.com:
+  git config --global credential.https://github.com/.helper \
+    '!f() { echo username=x-access-token; echo password=$GHORG_GITHUB_TOKEN; }; f'
+}
+
 run_ghorg_backup() {
   local target="$1"
   local clone_type="$2"
@@ -88,6 +98,7 @@ run_metadata_backup() {
   local args=(
     --token "${GITHUB_TOKEN}"
     --output-directory "${metadata_dir}"
+    --private
     --issues
     --issue-comments
     --issue-events
@@ -101,6 +112,10 @@ run_metadata_backup() {
     --assets
     --attachments
   )
+
+  if [[ "${target}" != "${GITHUB_OWNER}" ]]; then
+    args+=(--organization)
+  fi
 
   if [[ "${target}" == "${GITHUB_OWNER}" ]]; then
     args+=(
@@ -128,6 +143,8 @@ GITHUB_TOKEN="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
 [[ -n "${GITHUB_TOKEN}" ]] || die "GitHub token value is empty"
 
 mkdir -p /data/logs /data/metadata /data/mirrors /data/state
+
+configure_github_https_auth
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 run_log="/data/logs/${run_id}.log"
