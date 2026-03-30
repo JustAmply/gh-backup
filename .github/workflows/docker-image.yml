@@ -36,16 +36,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create validation token file
-        run: printf 'placeholder-token' > ./tmp-github-token.txt
-
       - name: Validate container runtime
         run: |
           docker run --rm \
             -e GITHUB_OWNER=example-user \
-            -e GITHUB_TOKEN_FILE=/run/secrets/github_token \
+            -e GITHUB_TOKEN=placeholder-token \
             -e BACKUP_CRON='17 2 * * *' \
-            -v "${PWD}/tmp-github-token.txt:/run/secrets/github_token:ro" \
             gh-backup:test validate
 
   publish:

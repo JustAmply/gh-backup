@@ -1,4 +1,2 @@
 .env
-secrets/github_token.txt
 tmp/
-

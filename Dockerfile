@@ -63,7 +63,7 @@ RUN case "${TARGETARCH}" in \
     && echo "${supercronic_sha1}  /usr/local/bin/supercronic" | sha1sum -c - \
     && chmod +x /usr/local/bin/supercronic
 
-RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state /run/secrets
+RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state
 
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY scripts/run-backup.sh /usr/local/bin/run-backup.sh

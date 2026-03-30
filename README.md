@@ -33,7 +33,7 @@ Not included in v1:
 ## Requirements
 
 - Docker 29+ with Compose
-- a GitHub Personal Access Token provided either by environment variable or an optional mounted token file
+- a GitHub Personal Access Token provided through `GITHUB_TOKEN`
 
 The default and recommended setup is a Classic PAT with these scopes:
 
@@ -72,7 +72,6 @@ The Compose file reads these environment variables:
 - `GITHUB_OWNER`: personal account name, required
 - `GITHUB_ORGS`: optional comma-separated list of additional organizations
 - `GITHUB_TOKEN`: GitHub token, default and preferred authentication method
-- `GITHUB_TOKEN_FILE`: optional path to a mounted token file; used only when `GITHUB_TOKEN` is not set
 - `BACKUP_CRON`: default `17 2 * * *`
 - `TZ`: default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`
@@ -80,28 +79,10 @@ The Compose file reads these environment variables:
 
 If `RUN_ON_STARTUP=true`, the container runs one backup immediately after startup and then switches to scheduler mode.
 
-## Authentication Modes
-
-### Default: environment variable
-
 Store the token in `.env`:
 
 ```dotenv
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-```
-
-### Optional: token file
-
-If you prefer a mounted file, leave `GITHUB_TOKEN` empty, set `GITHUB_TOKEN_FILE`, and mount the file yourself through a Compose override or `docker run`.
-
-Example:
-
-```bash
-docker run --rm \
-  -e GITHUB_OWNER=your-user \
-  -e GITHUB_TOKEN_FILE=/run/secrets/github_token \
-  -v "$PWD/secrets/github_token.txt:/run/secrets/github_token:ro" \
-  gh-backup:local validate
 ```
 
 ## Data Layout

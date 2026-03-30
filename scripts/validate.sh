@@ -11,7 +11,7 @@ die() {
 }
 
 : "${GITHUB_OWNER:=}"
-: "${GITHUB_TOKEN_FILE:=/run/secrets/github_token}"
+: "${GITHUB_TOKEN:=}"
 : "${BACKUP_CRON:=17 2 * * *}"
 
 for cmd in ghorg github-backup git git-lfs supercronic flock bash curl; do
@@ -20,10 +20,8 @@ done
 
 [[ -n "${GITHUB_OWNER}" ]] || die "GITHUB_OWNER must be set"
 [[ "${GITHUB_OWNER}" != "change-me" ]] || die "GITHUB_OWNER must be configured with a real account name"
-[[ -r "${GITHUB_TOKEN_FILE}" ]] || die "GitHub token file is not readable: ${GITHUB_TOKEN_FILE}"
-
-token_value="$(tr -d '\r\n' < "${GITHUB_TOKEN_FILE}")"
-[[ -n "${token_value}" ]] || die "GitHub token file is empty: ${GITHUB_TOKEN_FILE}"
+token_value="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
+[[ -n "${token_value}" ]] || die "GitHub token value is empty"
 
 tmp_cron="$(mktemp)"
 trap 'rm -f "${tmp_cron}"' EXIT
@@ -36,4 +34,3 @@ EOF
 
 supercronic -test "${tmp_cron}" >/dev/null
 log "Validation succeeded"
-

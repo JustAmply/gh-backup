@@ -1,7 +1,5 @@
 .git
 .github
 .env
-secrets/github_token.txt
 README.local.md
 tmp
-
