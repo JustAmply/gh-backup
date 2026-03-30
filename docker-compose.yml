@@ -1,0 +1,24 @@
+services:
+  gh-backup:
+    build:
+      context: .
+    image: gh-backup:local
+    restart: unless-stopped
+    environment:
+      GITHUB_OWNER: ${GITHUB_OWNER:-change-me}
+      GITHUB_ORGS: ${GITHUB_ORGS:-}
+      GITHUB_TOKEN_FILE: ${GITHUB_TOKEN_FILE:-/run/secrets/github_token}
+      BACKUP_CRON: ${BACKUP_CRON:-17 2 * * *}
+      TZ: ${TZ:-Europe/Berlin}
+      RUN_ON_STARTUP: ${RUN_ON_STARTUP:-true}
+      GHORG_INCLUDE_SUBMODULES: ${GHORG_INCLUDE_SUBMODULES:-true}
+    volumes:
+      - gh_backup_data:/data
+      - type: bind
+        source: ./secrets/github_token.txt
+        target: /run/secrets/github_token
+        read_only: true
+
+volumes:
+  gh_backup_data:
+
