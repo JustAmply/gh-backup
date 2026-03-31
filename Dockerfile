@@ -8,6 +8,7 @@ ARG SUPERCRONIC_VERSION=v0.2.43
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -22,8 +23,7 @@ RUN apt-get update \
         util-linux \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir "github-backup==${GITHUB_BACKUP_VERSION}"
+RUN python -m pip install --no-cache-dir "github-backup==${GITHUB_BACKUP_VERSION}"
 
 RUN case "${TARGETARCH}" in \
         amd64) \
