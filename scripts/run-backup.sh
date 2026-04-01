@@ -156,7 +156,7 @@ run_owner_backup() {
   mkdir -p "${mirror_root}"
   log "Starting owner backup for ${GITHUB_OWNER}"
 
-  repo_rows="$("${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos --token "${GITHUB_TOKEN}" --owner "${GITHUB_OWNER}")"
+  repo_rows="$("${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos --token "${GITHUB_TOKEN}" --owner "${GITHUB_OWNER}")" || return 1
 
   while IFS=$'\t' read -r repo_name clone_url has_wiki; do
     [[ -n "${repo_name}" ]] || continue
