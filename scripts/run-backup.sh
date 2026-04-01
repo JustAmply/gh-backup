@@ -145,7 +145,7 @@ update_or_clone_wiki_mirror() {
 
 run_owner_backup() {
   local mirror_root="${BACKUP_DATA_DIR}/mirrors/${GITHUB_OWNER}_backup"
-  local repo_rows
+  local repo_rows=""
   local repo_name
   local clone_url
   local has_wiki
