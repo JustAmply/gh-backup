@@ -56,6 +56,8 @@ Optional:
 - `BACKUP_CRON` to change the schedule
 - `TZ` to change the timezone
 
+`GITHUB_OWNER` backs up repositories owned by the authenticated user behind `GITHUB_TOKEN`, including owned private repositories. Use `GITHUB_ORGS` to opt in additional organizations.
+
 ### 3. Start the Backup Container
 
 ```bash
@@ -99,6 +101,8 @@ Reason:
 - classic tokens are the most predictable choice for full-account backups
 - fine-grained tokens can be more restrictive and may not cover every backup case cleanly
 
+At runtime, the container checks the token before the backup starts. Fine-grained PATs fail fast by default. If you need to test one anyway, set `ALLOW_FINE_GRAINED_PAT=true`.
+
 ### Steps
 
 1. Open GitHub.
@@ -129,13 +133,16 @@ Why these scopes:
 
 If your organization uses SSO, GitHub may also require you to authorize the token for that organization after creation.
 
+The backup preflight calls the GitHub `/user` API before any clone work starts. Invalid tokens, missing scopes, and SSO-required responses fail early with a clear error instead of producing a partial backup.
+
 ## Configuration
 
 The container reads these environment variables from `.env`:
 
 - `GITHUB_OWNER`: your personal GitHub username, required
-- `GITHUB_ORGS`: optional comma-separated organizations to back up too
+- `GITHUB_ORGS`: optional comma-separated organizations to back up in addition to the owner account
 - `GITHUB_TOKEN`: your GitHub PAT, required
+- `ALLOW_FINE_GRAINED_PAT`: `true` or `false`, default `false`
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
@@ -147,6 +154,7 @@ Example:
 GITHUB_OWNER=octocat
 GITHUB_ORGS=my-company,my-side-project-org
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+ALLOW_FINE_GRAINED_PAT=false
 BACKUP_CRON=17 2 * * *
 TZ=Europe/Berlin
 RUN_ON_STARTUP=true

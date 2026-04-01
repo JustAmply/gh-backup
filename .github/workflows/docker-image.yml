@@ -51,6 +51,9 @@ jobs:
             -e BACKUP_CRON='17 2 * * *' \
             gh-backup:test validate
 
+      - name: Run regression tests
+        run: bash tests/run-backup-regression.sh
+
   publish:
     if: github.event_name == 'push'
     needs:

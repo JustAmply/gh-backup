@@ -66,10 +66,11 @@ RUN case "${TARGETARCH}" in \
 RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state
 
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY scripts/github-api-helper.py /usr/local/bin/github-api-helper.py
 COPY scripts/run-backup.sh /usr/local/bin/run-backup.sh
 COPY scripts/validate.sh /usr/local/bin/validate.sh
 
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/run-backup.sh /usr/local/bin/validate.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/github-api-helper.py /usr/local/bin/run-backup.sh /usr/local/bin/validate.sh
 
 WORKDIR /app
 VOLUME ["/data"]
