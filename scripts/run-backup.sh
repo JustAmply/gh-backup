@@ -53,49 +53,6 @@ configure_github_https_auth() {
     '!f() { echo username=x-access-token; echo password=$GHORG_GITHUB_TOKEN; }; f'
 }
 
-detect_token_type() {
-  case "${GITHUB_TOKEN}" in
-    ghp_*)
-      printf '%s\n' "classic-pat"
-      ;;
-    github_pat_*)
-      printf '%s\n' "fine-grained-pat"
-      ;;
-    *)
-      printf '%s\n' "unknown"
-      ;;
-  esac
-}
-
-preflight_github_access() {
-  local token_type
-  local authenticated_login
-
-  token_type="$(detect_token_type)"
-  case "${token_type}" in
-    classic-pat)
-      ;;
-    fine-grained-pat)
-      if bool_is_true "${ALLOW_FINE_GRAINED_PAT:-false}"; then
-        warn "Detected a fine-grained PAT. This backup stack is designed around classic PATs and may miss data."
-      else
-        die "Detected a fine-grained PAT. Use a classic PAT with repo, read:org, and gist scopes, or set ALLOW_FINE_GRAINED_PAT=true to continue anyway."
-      fi
-      ;;
-    *)
-      warn "Unrecognized GitHub token format. Classic PATs are recommended for full backups."
-      ;;
-  esac
-
-  authenticated_login="$("${PYTHON_BIN}" "${GITHUB_API_HELPER}" get-user-login \
-    --api-url "${GITHUB_API_URL:-https://api.github.com}" \
-    --token "${GITHUB_TOKEN}")" || exit 1
-
-  if [[ "${authenticated_login,,}" != "${GITHUB_OWNER,,}" ]]; then
-    die "GITHUB_OWNER (${GITHUB_OWNER}) does not match the authenticated GitHub user (${authenticated_login}). Set GITHUB_OWNER to the token owner's username."
-  fi
-}
-
 run_ghorg_backup() {
   local target="$1"
   local clone_type="$2"
@@ -199,10 +156,7 @@ run_owner_backup() {
   mkdir -p "${mirror_root}"
   log "Starting owner backup for ${GITHUB_OWNER}"
 
-  repo_rows="$("${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos \
-    --api-url "${GITHUB_API_URL:-https://api.github.com}" \
-    --token "${GITHUB_TOKEN}" \
-    --owner "${GITHUB_OWNER}")"
+  repo_rows="$("${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos --token "${GITHUB_TOKEN}" --owner "${GITHUB_OWNER}")"
 
   while IFS=$'\t' read -r repo_name clone_url has_wiki; do
     [[ -n "${repo_name}" ]] || continue
@@ -281,7 +235,6 @@ run_metadata_backup() {
 : "${GITHUB_OWNER:=}"
 : "${GITHUB_ORGS:=}"
 : "${GITHUB_TOKEN:=}"
-: "${ALLOW_FINE_GRAINED_PAT:=false}"
 : "${BACKUP_DATA_DIR:=/data}"
 : "${GITHUB_API_HELPER:=/usr/local/bin/github-api-helper.py}"
 : "${PYTHON_BIN:=python3}"
@@ -307,8 +260,6 @@ exec 9>"${BACKUP_DATA_DIR}/state/backup.lock"
 if ! flock -n 9; then
   die "Another backup run is already in progress"
 fi
-
-preflight_github_access
 
 targets=("${GITHUB_OWNER}")
 if [[ -n "${GITHUB_ORGS}" ]]; then

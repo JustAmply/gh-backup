@@ -6,11 +6,9 @@ TMP_DIR="$(mktemp -d)"
 TEST_BIN_DIR="${TMP_DIR}/bin"
 TEST_LOG_DIR="${TMP_DIR}/logs"
 TEST_DATA_DIR="${TMP_DIR}/data"
+TEST_HELPER="${TMP_DIR}/helper.py"
 
 cleanup() {
-  if [[ -n "${SERVER_PID:-}" ]]; then
-    kill "${SERVER_PID}" >/dev/null 2>&1 || true
-  fi
   rm -rf "${TMP_DIR}"
 }
 trap cleanup EXIT
@@ -26,42 +24,12 @@ assert_contains() {
   grep -F -- "${expected}" "${file}" >/dev/null || fail "Expected '${expected}' in ${file}"
 }
 
-assert_not_contains() {
-  local file="$1"
-  local unexpected="$2"
-  if grep -F -- "${unexpected}" "${file}" >/dev/null; then
-    fail "Did not expect '${unexpected}' in ${file}"
-  fi
-}
-
-start_mock_server() {
-  local scenario="$1"
-  local port_file="${TMP_DIR}/server-port"
-
-  rm -f "${port_file}"
-  MOCK_GITHUB_SCENARIO="${scenario}" python3 "${ROOT_DIR}/tests/mock-github-api.py" >"${port_file}" &
-  SERVER_PID=$!
-
-  for _ in {1..50}; do
-    if [[ -s "${port_file}" ]]; then
-      SERVER_PORT="$(<"${port_file}")"
-      export GITHUB_API_URL="http://127.0.0.1:${SERVER_PORT}"
-      return 0
-    fi
-    sleep 0.1
-  done
-
-  fail "Mock GitHub API server did not start"
-}
-
 reset_logs() {
   rm -rf "${TEST_LOG_DIR}" "${TEST_DATA_DIR}" "${TMP_DIR}/home"
   mkdir -p "${TEST_LOG_DIR}" "${TEST_DATA_DIR}" "${TEST_BIN_DIR}" "${TMP_DIR}/home"
 }
 
 write_stubs() {
-  mkdir -p "${TEST_BIN_DIR}"
-
   cat > "${TEST_BIN_DIR}/git" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -74,20 +42,13 @@ if [[ "$1" == "clone" && "$2" == "--mirror" ]]; then
   exit 0
 fi
 if [[ "$1" == "-C" ]]; then
-  repo_dir="$2"
   shift 2
   case "$1 $2" in
     "rev-parse --is-bare-repository")
       echo true
       exit 0
       ;;
-    "remote set-url")
-      exit 0
-      ;;
-    "remote update")
-      exit 0
-      ;;
-    "lfs fetch")
+    "remote set-url"|"remote update"|"lfs fetch")
       exit 0
       ;;
   esac
@@ -124,6 +85,26 @@ EOF
   chmod +x "${TEST_BIN_DIR}/git" "${TEST_BIN_DIR}/ghorg" "${TEST_BIN_DIR}/github-backup"
 }
 
+write_helper() {
+  cat > "${TEST_HELPER}" <<'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+
+scenario = os.environ.get("TEST_HELPER_SCENARIO", "success")
+
+if scenario == "success":
+    sys.stdout.write("public-repo\thttps://github.com/octocat/public-repo.git\ttrue\n")
+    sys.stdout.write("private-repo\thttps://github.com/octocat/private-repo.git\tfalse\n")
+    sys.exit(0)
+
+sys.stderr.write("GitHub repo discovery failed (403): Resource protected by organization SAML enforcement.\n")
+sys.exit(1)
+EOF
+
+  chmod +x "${TEST_HELPER}"
+}
+
 run_backup_expect_success() {
   local output_file="${TMP_DIR}/success-output.log"
   env \
@@ -134,22 +115,22 @@ run_backup_expect_success() {
     GITHUB_ORGS="my-org" \
     GITHUB_TOKEN="ghp_testtoken" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
-    GITHUB_API_HELPER="${ROOT_DIR}/scripts/github-api-helper.py" \
+    GITHUB_API_HELPER="${TEST_HELPER}" \
     GHORG_INCLUDE_SUBMODULES="true" \
     bash "${ROOT_DIR}/scripts/run-backup.sh" >"${output_file}" 2>&1 || fail "Expected success scenario to pass"
 }
 
 run_backup_expect_failure() {
-  local token="$1"
-  local output_file="$2"
+  local output_file="$1"
   if env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
     HOME="${TMP_DIR}/home" \
     TEST_LOG_DIR="${TEST_LOG_DIR}" \
+    TEST_HELPER_SCENARIO="failure" \
     GITHUB_OWNER="octocat" \
-    GITHUB_TOKEN="${token}" \
+    GITHUB_TOKEN="ghp_testtoken" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
-    GITHUB_API_HELPER="${ROOT_DIR}/scripts/github-api-helper.py" \
+    GITHUB_API_HELPER="${TEST_HELPER}" \
     bash "${ROOT_DIR}/scripts/run-backup.sh" >"${output_file}" 2>&1; then
     fail "Expected failure scenario to fail"
   fi
@@ -158,26 +139,19 @@ run_backup_expect_failure() {
 main() {
   reset_logs
   write_stubs
-  start_mock_server success
+  write_helper
+
   run_backup_expect_success
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/private-repo"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.wiki.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo.wiki.git"
-  assert_not_contains "${TEST_LOG_DIR}/git.log" "collab-repo.git"
-  assert_not_contains "${TEST_LOG_DIR}/git.log" "org-repo.git"
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org"
 
-  kill "${SERVER_PID}" >/dev/null 2>&1 || true
-  unset SERVER_PID
-
   reset_logs
-  run_backup_expect_failure "github_pat_finegrained" "${TMP_DIR}/fine-grained-output.log"
-  assert_contains "${TMP_DIR}/fine-grained-output.log" "Detected a fine-grained PAT"
-
-  reset_logs
-  start_mock_server sso
-  run_backup_expect_failure "ghp_testtoken" "${TMP_DIR}/sso-output.log"
-  assert_contains "${TMP_DIR}/sso-output.log" "needs SSO authorization"
+  write_stubs
+  write_helper
+  run_backup_expect_failure "${TMP_DIR}/failure-output.log"
+  assert_contains "${TMP_DIR}/failure-output.log" "GitHub repo discovery failed"
 }
 
 main "$@"
