@@ -60,6 +60,8 @@ reset_logs() {
 }
 
 write_stubs() {
+  mkdir -p "${TEST_BIN_DIR}"
+
   cat > "${TEST_BIN_DIR}/git" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -154,9 +156,8 @@ run_backup_expect_failure() {
 }
 
 main() {
-  write_stubs
-
   reset_logs
+  write_stubs
   start_mock_server success
   run_backup_expect_success
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo"
