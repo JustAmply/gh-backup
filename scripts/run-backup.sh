@@ -223,6 +223,7 @@ PY
 is_safe_relative_path() {
   local path="$1"
   local segment
+  local -a path_segments
 
   [[ -n "${path}" ]] || return 1
   [[ "${path}" != /* ]] || return 1
