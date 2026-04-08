@@ -264,10 +264,23 @@ mirror_repo_submodules() {
       rm -rf "${temp_dir}"
       return 1
     }
-    submodule_commit="$(git -C "${temp_dir}" rev-parse "HEAD:${submodule_path}")"
+    submodule_commit="$(git -C "${temp_dir}" rev-parse "HEAD:${submodule_path}")" || {
+      log "ERROR: failed to resolve submodule commit for ${namespace}/${submodule_path} at ${commitish}"
+      rm -rf "${temp_dir}"
+      return 1
+    }
 
-    update_or_clone_mirror "${submodule_url}" "${submodule_repo_dir}"
-    mirror_repo_submodules "${submodule_repo_dir}" "${mirror_root}" "${namespace}/${submodule_path}" "${submodule_commit}"
+    if ! update_or_clone_mirror "${submodule_url}" "${submodule_repo_dir}"; then
+      log "ERROR: failed to mirror submodule ${namespace}/${submodule_path} from ${submodule_url}"
+      rm -rf "${temp_dir}"
+      return 1
+    fi
+
+    if ! mirror_repo_submodules "${submodule_repo_dir}" "${mirror_root}" "${namespace}/${submodule_path}" "${submodule_commit}"; then
+      log "ERROR: failed to mirror nested submodules for ${namespace}/${submodule_path}"
+      rm -rf "${temp_dir}"
+      return 1
+    fi
   done
 
   rm -rf "${temp_dir}"

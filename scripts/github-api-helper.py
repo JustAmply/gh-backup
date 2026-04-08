@@ -10,6 +10,7 @@ import urllib.request
 
 
 DEFAULT_API_URL = "https://api.github.com"
+DEFAULT_API_TIMEOUT_SECONDS = 30.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,7 +21,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def request_json(api_url: str, path: str, token: str) -> object:
+def resolve_api_timeout_seconds() -> float:
+    raw_timeout = os.environ.get("GITHUB_API_TIMEOUT_SECONDS")
+    if raw_timeout is None:
+        return DEFAULT_API_TIMEOUT_SECONDS
+
+    try:
+        timeout = float(raw_timeout)
+    except ValueError as error:
+        raise ValueError(f"Invalid GITHUB_API_TIMEOUT_SECONDS value: {raw_timeout}") from error
+
+    if timeout <= 0:
+        raise ValueError(f"GITHUB_API_TIMEOUT_SECONDS must be positive: {raw_timeout}")
+
+    return timeout
+
+
+def request_json(api_url: str, path: str, token: str, timeout_seconds: float) -> object:
     request = urllib.request.Request(
         f"{api_url}{path}",
         headers={
@@ -31,7 +48,7 @@ def request_json(api_url: str, path: str, token: str) -> object:
         },
     )
 
-    with urllib.request.urlopen(request) as response:
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -45,7 +62,8 @@ def list_owner_repos(token: str, owner: str) -> int:
     page = 1
 
     try:
-        profile = request_json(api_url, "/user", token)
+        timeout_seconds = resolve_api_timeout_seconds()
+        profile = request_json(api_url, "/user", token, timeout_seconds)
         if not isinstance(profile, dict):
             print("GitHub repo discovery failed: invalid /user response payload", file=sys.stderr)
             return 1
@@ -71,7 +89,7 @@ def list_owner_repos(token: str, owner: str) -> int:
                     "page": page,
                 }
             )
-            repos = request_json(api_url, f"/user/repos?{query}", token)
+            repos = request_json(api_url, f"/user/repos?{query}", token, timeout_seconds)
             if not isinstance(repos, list):
                 print("GitHub repo discovery failed: invalid /user/repos response payload", file=sys.stderr)
                 return 1
@@ -106,6 +124,12 @@ def list_owner_repos(token: str, owner: str) -> int:
         return 1
     except urllib.error.URLError as error:
         print(f"GitHub repo discovery failed: {error.reason}", file=sys.stderr)
+        return 1
+    except TimeoutError:
+        print(f"GitHub repo discovery failed: timed out after {timeout_seconds:g} seconds", file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(f"GitHub repo discovery failed: {error}", file=sys.stderr)
         return 1
 
 

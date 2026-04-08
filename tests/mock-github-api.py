@@ -42,7 +42,7 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             page = query.get("page", ["1"])[0]
 
-            if SCENARIO == "repo-sso-failure":
+            if SCENARIO == "sso-failure":
                 self._write_json(403, {"message": "Resource protected by organization SAML enforcement."})
                 return
 
