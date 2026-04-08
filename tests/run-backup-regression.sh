@@ -185,6 +185,9 @@ if [[ "$1" == "-C" ]]; then
       fi
       origin="$(cat "${repo_dir}/.stub-origin")"
       if [[ "${origin}" == *"/octocat_backup/public-repo" && "$3" == "submodule.libs/private-dependency.url" ]]; then
+        if [[ "${submodule_scenario}" == "missing-url" ]]; then
+          exit 1
+        fi
         if [[ "${submodule_scenario}" == "relative-url" ]]; then
           echo "../private-dependency.git"
         else
@@ -402,6 +405,11 @@ main() {
   run_backup_expect_failure "${TMP_DIR}/malicious-submodule.log" "success" "success" "malicious-path"
   assert_contains "${TMP_DIR}/malicious-submodule.log" "owner backup failed for octocat"
   assert_not_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-dependency.git"
+
+  reset_logs
+  write_stubs
+  run_backup_expect_failure "${TMP_DIR}/missing-submodule-url.log" "success" "success" "missing-url"
+  assert_contains "${TMP_DIR}/missing-submodule-url.log" "failed to resolve submodule metadata for public-repo/libs/private-dependency"
 }
 
 main "$@"

@@ -314,8 +314,8 @@ mirror_repo_submodules() {
   for key in "${submodule_keys[@]}"; do
     module_name="${key#submodule.}"
     module_name="${module_name%.path}"
-    submodule_path="$(git -C "${temp_dir}" config --file .gitmodules --get "${key}")"
-    submodule_url="$(git -C "${temp_dir}" config --get "submodule.${module_name}.url")"
+    submodule_path="$(git -C "${temp_dir}" config --file .gitmodules --get "${key}" 2>/dev/null || true)"
+    submodule_url="$(git -C "${temp_dir}" config --get "submodule.${module_name}.url" 2>/dev/null || true)"
 
     [[ -n "${submodule_path}" && -n "${submodule_url}" ]] || {
       rm -rf "${temp_dir}"

@@ -56,7 +56,7 @@ Optional:
 - `BACKUP_CRON` to change the schedule
 - `TZ` to change the timezone
 
-`GITHUB_OWNER` backs up repositories owned by the authenticated user behind `GITHUB_TOKEN`, including owned private repositories. Use `GITHUB_ORGS` to opt in additional organizations.
+`GITHUB_OWNER` backs up repositories owned by the authenticated user behind `GITHUB_TOKEN`, including owned private repositories. Use `GITHUB_ORGS` to opt in to additional organizations.
 
 ### 3. Start the Backup Container
 
@@ -142,6 +142,14 @@ The container reads these environment variables from `.env`:
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
 - `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
+
+Advanced/optional overrides:
+
+- `BACKUP_DATA_DIR`: custom data root inside the container, default `/data`
+- `PYTHON_BIN`: Python interpreter used for the owner repo helper, default `python3`
+- `GITHUB_API_HELPER`: path to the helper script used for owner repo discovery, default `/usr/local/bin/github-api-helper.py`
+- `GITHUB_API_URL`: GitHub API base URL used by the helper, default `https://api.github.com`
+- `GITHUB_API_TIMEOUT_SECONDS`: helper HTTP timeout in seconds, default `30`
 
 Example:
 
