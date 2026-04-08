@@ -39,13 +39,49 @@ if [[ "$1" == "config" ]]; then
 fi
 if [[ "$1" == "clone" && "$2" == "--mirror" ]]; then
   mkdir -p "$4"
+  touch "$4/HEAD"
+  exit 0
+fi
+if [[ "$1" == "clone" && "$2" == "--quiet" && "$3" == "--no-checkout" && "$4" == "--shared" ]]; then
+  mkdir -p "$6"
+  printf '%s\n' "$5" > "$6/.stub-origin"
   exit 0
 fi
 if [[ "$1" == "-C" ]]; then
+  repo_dir="$2"
   shift 2
   case "$1 $2" in
     "rev-parse --is-bare-repository")
       echo true
+      exit 0
+      ;;
+    "checkout --quiet"|"submodule init"|"remote set-url"|"remote update"|"lfs fetch")
+      exit 0
+      ;;
+    "config --file")
+      origin="$(cat "${repo_dir}/.stub-origin")"
+      if [[ "$4" == "--name-only" ]]; then
+        if [[ "${origin}" == *"/octocat_backup/public-repo" ]]; then
+          echo "submodule.libs/private-dependency.path"
+        fi
+        exit 0
+      fi
+      if [[ "$4" == "--get" ]]; then
+        if [[ "${origin}" == *"/octocat_backup/public-repo" && "$5" == "submodule.libs/private-dependency.path" ]]; then
+          echo "libs/private-dependency"
+        fi
+        exit 0
+      fi
+      ;;
+    "config --get")
+      origin="$(cat "${repo_dir}/.stub-origin")"
+      if [[ "${origin}" == *"/octocat_backup/public-repo" && "$3" == "submodule.libs/private-dependency.url" ]]; then
+        echo "https://github.com/octocat/private-dependency.git"
+      fi
+      exit 0
+      ;;
+    "rev-parse HEAD:libs/private-dependency")
+      echo "0123456789abcdef0123456789abcdef01234567"
       exit 0
       ;;
     "remote set-url"|"remote update"|"lfs fetch")
@@ -144,7 +180,9 @@ main() {
   run_backup_expect_success
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/private-repo"
+  assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-dependency.git ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.wiki.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo.wiki.git"
+  assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency lfs fetch --all"
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org"
 
   reset_logs

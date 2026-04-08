@@ -115,6 +115,8 @@ update_or_clone_mirror() {
   local clone_url="$1"
   local repo_dir="$2"
 
+  mkdir -p "$(dirname "${repo_dir}")"
+
   if [[ -d "${repo_dir}" ]]; then
     log "Updating mirror ${repo_dir}"
     git -C "${repo_dir}" remote set-url origin "${clone_url}"
@@ -129,6 +131,8 @@ update_or_clone_wiki_mirror() {
   local wiki_url="$1"
   local wiki_dir="$2"
 
+  mkdir -p "$(dirname "${wiki_dir}")"
+
   if [[ -d "${wiki_dir}" ]]; then
     log "Updating wiki mirror ${wiki_dir}"
     git -C "${wiki_dir}" remote set-url origin "${wiki_url}"
@@ -141,6 +145,74 @@ update_or_clone_wiki_mirror() {
       warn "Wiki mirror clone failed for ${wiki_url}; continuing"
     fi
   fi
+}
+
+clone_repo_for_submodule_scan() {
+  local repo_dir="$1"
+  local commitish="$2"
+  local temp_dir
+
+  temp_dir="$(mktemp -d)"
+
+  if ! git clone --quiet --no-checkout --shared "${repo_dir}" "${temp_dir}" >/dev/null 2>&1; then
+    rm -rf "${temp_dir}"
+    return 1
+  fi
+
+  if ! git -C "${temp_dir}" checkout --quiet --detach "${commitish}" >/dev/null 2>&1; then
+    rm -rf "${temp_dir}"
+    return 1
+  fi
+
+  printf '%s\n' "${temp_dir}"
+}
+
+mirror_repo_submodules() {
+  local repo_dir="$1"
+  local mirror_root="$2"
+  local namespace="$3"
+  local commitish="${4:-HEAD}"
+  local temp_dir
+  local submodule_keys=()
+  local key
+  local module_name
+  local submodule_path
+  local submodule_url
+  local submodule_commit
+  local submodule_repo_dir
+
+  temp_dir="$(clone_repo_for_submodule_scan "${repo_dir}" "${commitish}")" || {
+    log "ERROR: failed to inspect submodules for ${namespace} at ${commitish}"
+    return 1
+  }
+
+  git -C "${temp_dir}" submodule init >/dev/null 2>&1 || true
+  mapfile -t submodule_keys < <(git -C "${temp_dir}" config --file .gitmodules --name-only --get-regexp '^submodule\..*\.path$' 2>/dev/null || true)
+
+  if [[ "${#submodule_keys[@]}" -eq 0 ]]; then
+    rm -rf "${temp_dir}"
+    return 0
+  fi
+
+  for key in "${submodule_keys[@]}"; do
+    module_name="${key#submodule.}"
+    module_name="${module_name%.path}"
+    submodule_path="$(git -C "${temp_dir}" config --file .gitmodules --get "${key}")"
+    submodule_url="$(git -C "${temp_dir}" config --get "submodule.${module_name}.url")"
+    submodule_commit="$(git -C "${temp_dir}" rev-parse "HEAD:${submodule_path}")"
+    submodule_repo_dir="${mirror_root}/.submodules/${namespace}/${submodule_path}"
+
+    [[ -n "${submodule_path}" && -n "${submodule_url}" ]] || {
+      rm -rf "${temp_dir}"
+      log "ERROR: failed to resolve submodule metadata for ${namespace}/${module_name}"
+      return 1
+    }
+
+    update_or_clone_mirror "${submodule_url}" "${submodule_repo_dir}"
+    mirror_repo_submodules "${submodule_repo_dir}" "${mirror_root}" "${namespace}/${submodule_path}" "${submodule_commit}"
+  done
+
+  rm -rf "${temp_dir}"
 }
 
 run_owner_backup() {
@@ -164,6 +236,10 @@ run_owner_backup() {
     repo_dir="$(resolve_repo_dir "${mirror_root}" "${repo_name}")"
     update_or_clone_mirror "${clone_url}" "${repo_dir}"
 
+    if bool_is_true "${GHORG_INCLUDE_SUBMODULES:-true}"; then
+      mirror_repo_submodules "${repo_dir}" "${mirror_root}" "${repo_name}"
+    fi
+
     if [[ "${has_wiki}" == "true" ]]; then
       wiki_dir="$(resolve_wiki_dir "${mirror_root}" "${repo_name}")"
       wiki_url="${clone_url%.git}.wiki.git"
@@ -176,19 +252,32 @@ fetch_lfs_for_target() {
   local target="$1"
   local mirror_root="${BACKUP_DATA_DIR}/mirrors/${target}_backup"
   local repo_dir
+  local submodule_root="${mirror_root}/.submodules"
+  local repo_dirs=()
 
   if [[ ! -d "${mirror_root}" ]]; then
     die "Expected mirror directory missing: ${mirror_root}"
   fi
 
-  shopt -s nullglob
+  shopt -s nullglob dotglob
   for repo_dir in "${mirror_root}"/*; do
+    [[ "$(basename "${repo_dir}")" == ".submodules" ]] && continue
+    repo_dirs+=("${repo_dir}")
+  done
+  shopt -u nullglob dotglob
+
+  if [[ -d "${submodule_root}" ]]; then
+    while IFS= read -r repo_dir; do
+      repo_dirs+=("${repo_dir}")
+    done < <(find "${submodule_root}" -type f -name HEAD -printf '%h\n' | sort -u)
+  fi
+
+  for repo_dir in "${repo_dirs[@]}"; do
     if [[ -d "${repo_dir}" ]] && git -C "${repo_dir}" rev-parse --is-bare-repository >/dev/null 2>&1; then
       log "Fetching Git LFS objects for ${repo_dir}"
       git -C "${repo_dir}" lfs fetch --all
     fi
   done
-  shopt -u nullglob
 }
 
 run_metadata_backup() {
