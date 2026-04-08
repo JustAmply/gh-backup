@@ -197,7 +197,42 @@ set -Eeuo pipefail
 printf '%s\n' "$*" >> "${TEST_LOG_DIR}/github-backup.log"
 EOF
 
-  chmod +x "${TEST_BIN_DIR}/git" "${TEST_BIN_DIR}/ghorg" "${TEST_BIN_DIR}/github-backup"
+  cat > "${TEST_BIN_DIR}/git-lfs" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+exit 0
+EOF
+
+  cat > "${TEST_BIN_DIR}/flock" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+exit 0
+EOF
+
+  cat > "${TEST_BIN_DIR}/curl" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+exit 0
+EOF
+
+  cat > "${TEST_BIN_DIR}/supercronic" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ "${1:-}" == "-test" ]]; then
+  exit 0
+fi
+printf 'unexpected supercronic args: %s\n' "$*" >&2
+exit 1
+EOF
+
+  chmod +x \
+    "${TEST_BIN_DIR}/git" \
+    "${TEST_BIN_DIR}/ghorg" \
+    "${TEST_BIN_DIR}/github-backup" \
+    "${TEST_BIN_DIR}/git-lfs" \
+    "${TEST_BIN_DIR}/flock" \
+    "${TEST_BIN_DIR}/curl" \
+    "${TEST_BIN_DIR}/supercronic"
 }
 
 run_backup() {
