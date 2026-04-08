@@ -130,21 +130,75 @@ update_or_clone_mirror() {
 update_or_clone_wiki_mirror() {
   local wiki_url="$1"
   local wiki_dir="$2"
+  local output_file
+  output_file="$(mktemp)"
 
   mkdir -p "$(dirname "${wiki_dir}")"
 
   if [[ -d "${wiki_dir}" ]]; then
     log "Updating wiki mirror ${wiki_dir}"
     git -C "${wiki_dir}" remote set-url origin "${wiki_url}"
-    if ! git -C "${wiki_dir}" remote update --prune; then
+    if git -C "${wiki_dir}" remote update --prune >"${output_file}" 2>&1; then
+      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
+    elif grep -Eiq 'repository not found|fatal: repository .* not found' "${output_file}"; then
       warn "Wiki mirror update failed for ${wiki_url}; continuing"
+    else
+      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
+      rm -f "${output_file}"
+      return 1
     fi
   else
     log "Cloning wiki mirror ${wiki_url} -> ${wiki_dir}"
-    if ! git clone --mirror "${wiki_url}" "${wiki_dir}"; then
+    if git clone --mirror "${wiki_url}" "${wiki_dir}" >"${output_file}" 2>&1; then
+      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
+    elif grep -Eiq 'repository not found|fatal: repository .* not found' "${output_file}"; then
       warn "Wiki mirror clone failed for ${wiki_url}; continuing"
+    else
+      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
+      rm -f "${output_file}"
+      return 1
     fi
   fi
+
+  rm -f "${output_file}"
+}
+
+is_safe_relative_path() {
+  local path="$1"
+  local segment
+
+  [[ -n "${path}" ]] || return 1
+  [[ "${path}" != /* ]] || return 1
+  [[ "${path}" != *\\* ]] || return 1
+
+  IFS='/' read -r -a path_segments <<< "${path}"
+  for segment in "${path_segments[@]}"; do
+    case "${segment}" in
+      ""|"."|"..")
+        return 1
+        ;;
+    esac
+  done
+
+  return 0
+}
+
+resolve_submodule_repo_dir() {
+  local mirror_root="$1"
+  local namespace="$2"
+  local submodule_path="$3"
+
+  if ! is_safe_relative_path "${namespace}"; then
+    log "ERROR: unsafe submodule namespace detected: ${namespace}"
+    return 1
+  fi
+
+  if ! is_safe_relative_path "${submodule_path}"; then
+    log "ERROR: unsafe submodule path detected in ${namespace}: ${submodule_path}"
+    return 1
+  fi
+
+  printf '%s/.submodules/%s/%s\n' "${mirror_root}" "${namespace}" "${submodule_path}"
 }
 
 clone_repo_for_submodule_scan() {
@@ -199,14 +253,18 @@ mirror_repo_submodules() {
     module_name="${module_name%.path}"
     submodule_path="$(git -C "${temp_dir}" config --file .gitmodules --get "${key}")"
     submodule_url="$(git -C "${temp_dir}" config --get "submodule.${module_name}.url")"
-    submodule_commit="$(git -C "${temp_dir}" rev-parse "HEAD:${submodule_path}")"
-    submodule_repo_dir="${mirror_root}/.submodules/${namespace}/${submodule_path}"
 
     [[ -n "${submodule_path}" && -n "${submodule_url}" ]] || {
       rm -rf "${temp_dir}"
       log "ERROR: failed to resolve submodule metadata for ${namespace}/${module_name}"
       return 1
     }
+
+    submodule_repo_dir="$(resolve_submodule_repo_dir "${mirror_root}" "${namespace}" "${submodule_path}")" || {
+      rm -rf "${temp_dir}"
+      return 1
+    }
+    submodule_commit="$(git -C "${temp_dir}" rev-parse "HEAD:${submodule_path}")"
 
     update_or_clone_mirror "${submodule_url}" "${submodule_repo_dir}"
     mirror_repo_submodules "${submodule_repo_dir}" "${mirror_root}" "${namespace}/${submodule_path}" "${submodule_commit}"
@@ -217,7 +275,9 @@ mirror_repo_submodules() {
 
 run_owner_backup() {
   local mirror_root="${BACKUP_DATA_DIR}/mirrors/${GITHUB_OWNER}_backup"
-  local repo_rows=""
+  local repo_pipe_dir
+  local repo_pipe
+  local helper_pid
   local repo_name
   local clone_url
   local has_wiki
@@ -228,24 +288,48 @@ run_owner_backup() {
   mkdir -p "${mirror_root}"
   log "Starting owner backup for ${GITHUB_OWNER}"
 
-  repo_rows="$("${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos --token "${GITHUB_TOKEN}" --owner "${GITHUB_OWNER}")" || return 1
+  repo_pipe_dir="$(mktemp -d)"
+  repo_pipe="${repo_pipe_dir}/owner-repos.pipe"
+  mkfifo "${repo_pipe}"
+
+  "${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos --token "${GITHUB_TOKEN}" --owner "${GITHUB_OWNER}" >"${repo_pipe}" &
+  helper_pid=$!
 
   while IFS=$'\t' read -r repo_name clone_url has_wiki; do
     [[ -n "${repo_name}" ]] || continue
 
     repo_dir="$(resolve_repo_dir "${mirror_root}" "${repo_name}")"
-    update_or_clone_mirror "${clone_url}" "${repo_dir}"
+    if ! update_or_clone_mirror "${clone_url}" "${repo_dir}"; then
+      rm -f "${repo_pipe}"
+      rmdir "${repo_pipe_dir}"
+      wait "${helper_pid}" || true
+      return 1
+    fi
 
     if bool_is_true "${GHORG_INCLUDE_SUBMODULES:-true}"; then
-      mirror_repo_submodules "${repo_dir}" "${mirror_root}" "${repo_name}"
+      if ! mirror_repo_submodules "${repo_dir}" "${mirror_root}" "${repo_name}"; then
+        rm -f "${repo_pipe}"
+        rmdir "${repo_pipe_dir}"
+        wait "${helper_pid}" || true
+        return 1
+      fi
     fi
 
     if [[ "${has_wiki}" == "true" ]]; then
       wiki_dir="$(resolve_wiki_dir "${mirror_root}" "${repo_name}")"
       wiki_url="${clone_url%.git}.wiki.git"
-      update_or_clone_wiki_mirror "${wiki_url}" "${wiki_dir}"
+      if ! update_or_clone_wiki_mirror "${wiki_url}" "${wiki_dir}"; then
+        rm -f "${repo_pipe}"
+        rmdir "${repo_pipe_dir}"
+        wait "${helper_pid}" || true
+        return 1
+      fi
     fi
-  done <<< "${repo_rows}"
+  done < "${repo_pipe}"
+
+  rm -f "${repo_pipe}"
+  rmdir "${repo_pipe_dir}"
+  wait "${helper_pid}"
 }
 
 fetch_lfs_for_target() {

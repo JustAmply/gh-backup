@@ -2,13 +2,14 @@
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
 
-API_URL = "https://api.github.com"
+DEFAULT_API_URL = "https://api.github.com"
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,11 +20,48 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def request_json(api_url: str, path: str, token: str) -> object:
+    request = urllib.request.Request(
+        f"{api_url}{path}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "gh-backup",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+
+    with urllib.request.urlopen(request) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def resolve_api_url() -> str:
+    return os.environ.get("GITHUB_API_URL", DEFAULT_API_URL).rstrip("/")
+
+
 def list_owner_repos(token: str, owner: str) -> int:
+    api_url = resolve_api_url()
     owner_lower = owner.casefold()
     page = 1
 
     try:
+        profile = request_json(api_url, "/user", token)
+        if not isinstance(profile, dict):
+            print("GitHub repo discovery failed: invalid /user response payload", file=sys.stderr)
+            return 1
+
+        authenticated_login = profile.get("login")
+        if not isinstance(authenticated_login, str) or not authenticated_login:
+            print("GitHub repo discovery failed: authenticated user login missing from /user response", file=sys.stderr)
+            return 1
+
+        if authenticated_login.casefold() != owner_lower:
+            print(
+                f"GITHUB_OWNER '{owner}' does not match the authenticated GitHub user '{authenticated_login}'",
+                file=sys.stderr,
+            )
+            return 1
+
         while True:
             query = urllib.parse.urlencode(
                 {
@@ -33,18 +71,10 @@ def list_owner_repos(token: str, owner: str) -> int:
                     "page": page,
                 }
             )
-            request = urllib.request.Request(
-                f"{API_URL}/user/repos?{query}",
-                headers={
-                    "Accept": "application/vnd.github+json",
-                    "Authorization": f"Bearer {token}",
-                    "User-Agent": "gh-backup",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                },
-            )
-
-            with urllib.request.urlopen(request) as response:
-                repos = json.loads(response.read().decode("utf-8"))
+            repos = request_json(api_url, f"/user/repos?{query}", token)
+            if not isinstance(repos, list):
+                print("GitHub repo discovery failed: invalid /user/repos response payload", file=sys.stderr)
+                return 1
 
             if not repos:
                 return 0
