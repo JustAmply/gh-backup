@@ -114,6 +114,7 @@ if [[ "$1" == "clone" && "$2" == "--mirror" ]]; then
 
   mkdir -p "${repo_dir}"
   touch "${repo_dir}/HEAD"
+  printf '%s\n' "${clone_url}" > "${repo_dir}/.stub-remote-origin"
   exit 0
 fi
 
@@ -126,14 +127,38 @@ fi
 if [[ "$1" == "-C" ]]; then
   repo_dir="$2"
   shift 2
+  if [[ "$1" == "rev-parse" && "$2" == "--is-bare-repository" ]]; then
+    echo true
+    exit 0
+  fi
+  if [[ "$1" == "rev-parse" && "$2" == "--verify" ]]; then
+    if [[ "${git_scenario}" == "empty-repo-no-commits" && "${repo_dir}" == *"/octocat_backup/empty-repo" && "$3" == "HEAD^{commit}" ]]; then
+      exit 1
+    fi
+    echo "0123456789abcdef0123456789abcdef01234567"
+    exit 0
+  fi
+  if [[ "$1" == "checkout" && "$2" == "--quiet" ]]; then
+    origin="$(cat "${repo_dir}/.stub-origin" 2>/dev/null || true)"
+    if [[ "${git_scenario}" == "empty-repo-no-commits" && "${origin}" == *"/octocat_backup/empty-repo" ]]; then
+      exit 1
+    fi
+    exit 0
+  fi
+  if [[ "$1" == "submodule" && "$2" == "init" ]]; then
+    exit 0
+  fi
+  if [[ "$1" == "remote" && "$2" == "set-url" ]]; then
+    printf '%s\n' "$4" > "${repo_dir}/.stub-remote-origin"
+    exit 0
+  fi
+  if [[ "$1" == "remote" && "$2" == "update" ]]; then
+    exit 0
+  fi
+  if [[ "$1" == "lfs" && "$2" == "fetch" ]]; then
+    exit 0
+  fi
   case "$1 $2" in
-    "rev-parse --is-bare-repository")
-      echo true
-      exit 0
-      ;;
-    "checkout --quiet"|"submodule init"|"remote set-url"|"remote update"|"lfs fetch")
-      exit 0
-      ;;
     "config --file")
       origin="$(cat "${repo_dir}/.stub-origin")"
       if [[ "$4" == "--name-only" ]]; then
@@ -154,9 +179,17 @@ if [[ "$1" == "-C" ]]; then
       fi
       ;;
     "config --get")
+      if [[ "$3" == "remote.origin.url" ]]; then
+        cat "${repo_dir}/.stub-remote-origin"
+        exit 0
+      fi
       origin="$(cat "${repo_dir}/.stub-origin")"
       if [[ "${origin}" == *"/octocat_backup/public-repo" && "$3" == "submodule.libs/private-dependency.url" ]]; then
-        echo "https://github.com/octocat/private-dependency.git"
+        if [[ "${submodule_scenario}" == "relative-url" ]]; then
+          echo "../private-dependency.git"
+        else
+          echo "https://github.com/octocat/private-dependency.git"
+        fi
       fi
       exit 0
       ;;
@@ -331,6 +364,18 @@ main() {
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.wiki.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo.wiki.git"
   assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency lfs fetch --all"
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org"
+
+  reset_logs
+  write_stubs
+  run_backup_expect_success "${TMP_DIR}/empty-repo.log" "empty-repo" "empty-repo-no-commits"
+  assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/empty-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/empty-repo"
+  assert_not_contains "${TEST_LOG_DIR}/git.log" "clone --quiet --no-checkout --shared ${TEST_DATA_DIR}/mirrors/octocat_backup/empty-repo"
+  assert_contains "${TMP_DIR}/empty-repo.log" "Skipping submodule scan for empty-repo at HEAD: repository has no commits"
+
+  reset_logs
+  write_stubs
+  run_backup_expect_success "${TMP_DIR}/relative-submodule.log" "success" "success" "relative-url"
+  assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-dependency.git ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency"
 
   reset_logs
   write_stubs

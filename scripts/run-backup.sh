@@ -163,6 +163,63 @@ update_or_clone_wiki_mirror() {
   rm -f "${output_file}"
 }
 
+repo_has_commitish() {
+  local repo_dir="$1"
+  local commitish="$2"
+
+  git -C "${repo_dir}" rev-parse --verify "${commitish}^{commit}" >/dev/null 2>&1
+}
+
+resolve_submodule_clone_url() {
+  local repo_dir="$1"
+  local submodule_url="$2"
+  local origin_url
+  local resolved_url
+
+  if [[ "${submodule_url}" != ./* && "${submodule_url}" != ../* ]]; then
+    printf '%s\n' "${submodule_url}"
+    return 0
+  fi
+
+  origin_url="$(git -C "${repo_dir}" config --get remote.origin.url 2>/dev/null)" || {
+    log "ERROR: failed to resolve origin URL for ${repo_dir}"
+    return 1
+  }
+
+  [[ -n "${origin_url}" ]] || {
+    log "ERROR: origin URL missing for ${repo_dir}"
+    return 1
+  }
+
+  resolved_url="$("${PYTHON_BIN}" - "${origin_url}" "${submodule_url}" <<'PY'
+import posixpath
+import re
+import sys
+from urllib.parse import urlsplit, urlunsplit
+
+origin_url = sys.argv[1]
+submodule_url = sys.argv[2]
+
+if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", origin_url):
+    parts = urlsplit(origin_url)
+    resolved_path = posixpath.normpath(f"{parts.path.rstrip('/')}/{submodule_url}")
+    if not resolved_path.startswith("/"):
+        resolved_path = f"/{resolved_path}"
+    print(urlunsplit((parts.scheme, parts.netloc, resolved_path, parts.query, parts.fragment)))
+elif re.match(r"^[^/]+@[^/:]+:.+$", origin_url):
+    prefix, path = origin_url.split(":", 1)
+    print(f"{prefix}:{posixpath.normpath(f'{path.rstrip('/')}/{submodule_url}')}")
+else:
+    print(posixpath.normpath(f"{origin_url.rstrip('/')}/{submodule_url}"))
+PY
+)" || {
+    log "ERROR: failed to resolve submodule URL ${submodule_url} from ${origin_url}"
+    return 1
+  }
+
+  printf '%s\n' "${resolved_url}"
+}
+
 is_safe_relative_path() {
   local path="$1"
   local segment
@@ -235,6 +292,11 @@ mirror_repo_submodules() {
   local submodule_commit
   local submodule_repo_dir
 
+  if ! repo_has_commitish "${repo_dir}" "${commitish}"; then
+    log "Skipping submodule scan for ${namespace} at ${commitish}: repository has no commits"
+    return 0
+  fi
+
   temp_dir="$(clone_repo_for_submodule_scan "${repo_dir}" "${commitish}")" || {
     log "ERROR: failed to inspect submodules for ${namespace} at ${commitish}"
     return 1
@@ -257,6 +319,11 @@ mirror_repo_submodules() {
     [[ -n "${submodule_path}" && -n "${submodule_url}" ]] || {
       rm -rf "${temp_dir}"
       log "ERROR: failed to resolve submodule metadata for ${namespace}/${module_name}"
+      return 1
+    }
+
+    submodule_url="$(resolve_submodule_clone_url "${repo_dir}" "${submodule_url}")" || {
+      rm -rf "${temp_dir}"
       return 1
     }
 
@@ -309,6 +376,9 @@ run_owner_backup() {
   helper_pid=$!
 
   while IFS=$'\t' read -r repo_name clone_url has_wiki; do
+    repo_name="$(trim "${repo_name}")"
+    clone_url="$(trim "${clone_url}")"
+    has_wiki="$(trim "${has_wiki}")"
     [[ -n "${repo_name}" ]] || continue
 
     repo_dir="$(resolve_repo_dir "${mirror_root}" "${repo_name}")"

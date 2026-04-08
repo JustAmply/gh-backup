@@ -65,6 +65,18 @@ class Handler(BaseHTTPRequestHandler):
                         "has_wiki": False,
                         "owner": {"login": "octocat"},
                     },
+                    *(
+                        [
+                            {
+                                "name": "empty-repo",
+                                "clone_url": "https://github.com/octocat/empty-repo.git",
+                                "has_wiki": False,
+                                "owner": {"login": "octocat"},
+                            }
+                        ]
+                        if SCENARIO == "empty-repo"
+                        else []
+                    ),
                 ],
             )
             return
