@@ -5,10 +5,6 @@ log() {
   printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"
 }
 
-warn() {
-  log "WARN: $*"
-}
-
 die() {
   log "ERROR: $*"
   exit 1
@@ -69,142 +65,16 @@ run_ghorg_backup() {
     --clone-wiki
   )
 
+  if [[ "${clone_type}" == "user" ]]; then
+    args+=(--github-user-option=owner)
+  fi
+
   if bool_is_true "${GHORG_INCLUDE_SUBMODULES:-true}"; then
     args+=(--include-submodules)
   fi
 
   log "Starting ghorg backup for ${target} (${clone_type})"
   ghorg "${args[@]}"
-}
-
-resolve_repo_dir() {
-  local root="$1"
-  local repo_name="$2"
-  local candidate
-
-  for candidate in \
-    "${root}/${repo_name}" \
-    "${root}/${repo_name}.git"; do
-    if [[ -d "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  done
-
-  printf '%s\n' "${root}/${repo_name}"
-}
-
-resolve_wiki_dir() {
-  local root="$1"
-  local repo_name="$2"
-  local candidate
-
-  for candidate in \
-    "${root}/${repo_name}.wiki.git" \
-    "${root}/${repo_name}.wiki"; do
-    if [[ -d "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
-  done
-
-  printf '%s\n' "${root}/${repo_name}.wiki.git"
-}
-
-update_or_clone_mirror() {
-  local clone_url="$1"
-  local repo_dir="$2"
-
-  mkdir -p "$(dirname "${repo_dir}")"
-
-  if [[ -d "${repo_dir}" ]]; then
-    log "Updating mirror ${repo_dir}"
-    git -C "${repo_dir}" remote set-url origin "${clone_url}"
-    git -C "${repo_dir}" remote update --prune
-  else
-    log "Cloning mirror ${clone_url} -> ${repo_dir}"
-    git clone --mirror "${clone_url}" "${repo_dir}"
-  fi
-}
-
-update_or_clone_wiki_mirror() {
-  local wiki_url="$1"
-  local wiki_dir="$2"
-  local output_file
-  output_file="$(mktemp)"
-
-  mkdir -p "$(dirname "${wiki_dir}")"
-
-  if [[ -d "${wiki_dir}" ]]; then
-    log "Updating wiki mirror ${wiki_dir}"
-    git -C "${wiki_dir}" remote set-url origin "${wiki_url}"
-    if git -C "${wiki_dir}" remote update --prune >"${output_file}" 2>&1; then
-      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
-    elif grep -Eiq 'repository not found|fatal: repository .* not found' "${output_file}"; then
-      warn "Wiki mirror update failed for ${wiki_url}; continuing"
-    else
-      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
-      rm -f "${output_file}"
-      return 1
-    fi
-  else
-    log "Cloning wiki mirror ${wiki_url} -> ${wiki_dir}"
-    if git clone --mirror "${wiki_url}" "${wiki_dir}" >"${output_file}" 2>&1; then
-      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
-    elif grep -Eiq 'repository not found|fatal: repository .* not found' "${output_file}"; then
-      warn "Wiki mirror clone failed for ${wiki_url}; continuing"
-    else
-      [[ -s "${output_file}" ]] && cat "${output_file}" >&2
-      rm -f "${output_file}"
-      return 1
-    fi
-  fi
-
-  rm -f "${output_file}"
-}
-
-run_owner_backup() {
-  local mirror_root="${BACKUP_DATA_DIR}/mirrors/${GITHUB_OWNER}_backup"
-  local repo_list_file
-  local repo_name
-  local clone_url
-  local has_wiki
-  local repo_dir
-  local wiki_dir
-  local wiki_url
-
-  mkdir -p "${mirror_root}"
-  log "Starting owner backup for ${GITHUB_OWNER}"
-
-  repo_list_file="$(mktemp)"
-  if ! "${PYTHON_BIN}" "${GITHUB_API_HELPER}" list-owner-repos --token "${GITHUB_TOKEN}" --owner "${GITHUB_OWNER}" >"${repo_list_file}"; then
-    rm -f "${repo_list_file}"
-    return 1
-  fi
-
-  while IFS=$'\t' read -r repo_name clone_url has_wiki; do
-    repo_name="$(trim "${repo_name}")"
-    clone_url="$(trim "${clone_url}")"
-    has_wiki="$(trim "${has_wiki}")"
-    [[ -n "${repo_name}" ]] || continue
-
-    repo_dir="$(resolve_repo_dir "${mirror_root}" "${repo_name}")"
-    if ! update_or_clone_mirror "${clone_url}" "${repo_dir}"; then
-      rm -f "${repo_list_file}"
-      return 1
-    fi
-
-    if [[ "${has_wiki}" == "true" ]]; then
-      wiki_dir="$(resolve_wiki_dir "${mirror_root}" "${repo_name}")"
-      wiki_url="${clone_url%.git}.wiki.git"
-      if ! update_or_clone_wiki_mirror "${wiki_url}" "${wiki_dir}"; then
-        rm -f "${repo_list_file}"
-        return 1
-      fi
-    fi
-  done < "${repo_list_file}"
-
-  rm -f "${repo_list_file}"
 }
 
 fetch_lfs_for_target() {
@@ -271,16 +141,11 @@ run_metadata_backup() {
 : "${GITHUB_ORGS:=}"
 : "${GITHUB_TOKEN:=}"
 : "${BACKUP_DATA_DIR:=/data}"
-: "${GITHUB_API_HELPER:=/usr/local/bin/github-api-helper.py}"
-: "${PYTHON_BIN:=python3}"
 
 [[ -n "${GITHUB_OWNER}" ]] || die "GITHUB_OWNER must be set"
 
 GITHUB_TOKEN="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
 [[ -n "${GITHUB_TOKEN}" ]] || die "GitHub token value is empty"
-
-command -v "${PYTHON_BIN}" >/dev/null 2>&1 || die "Python runtime not found: ${PYTHON_BIN}"
-[[ -f "${GITHUB_API_HELPER}" ]] || die "GitHub API helper is missing: ${GITHUB_API_HELPER}"
 
 mkdir -p "${BACKUP_DATA_DIR}/logs" "${BACKUP_DATA_DIR}/metadata" "${BACKUP_DATA_DIR}/mirrors" "${BACKUP_DATA_DIR}/state"
 
@@ -314,18 +179,15 @@ log "Resolved targets: ${targets[*]}"
 
 overall_status=0
 for target in "${targets[@]}"; do
+  clone_type="org"
   if [[ "${target}" == "${GITHUB_OWNER}" ]]; then
-    if ! run_owner_backup; then
-      log "ERROR: owner backup failed for ${target}"
-      overall_status=1
-      continue
-    fi
-  else
-    if ! run_ghorg_backup "${target}" "org"; then
-      log "ERROR: ghorg backup failed for ${target}"
-      overall_status=1
-      continue
-    fi
+    clone_type="user"
+  fi
+
+  if ! run_ghorg_backup "${target}" "${clone_type}"; then
+    log "ERROR: ghorg backup failed for ${target}"
+    overall_status=1
+    continue
   fi
 
   if ! fetch_lfs_for_target "${target}"; then

@@ -141,15 +141,11 @@ The container reads these environment variables from `.env`:
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
-- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`; applies to `ghorg`-backed organization backups
+- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
 
 Advanced/optional overrides:
 
 - `BACKUP_DATA_DIR`: custom data root inside the container, default `/data`
-- `PYTHON_BIN`: Python interpreter used for the owner repo helper, default `python3`
-- `GITHUB_API_HELPER`: path to the helper script used for owner repo discovery, default `/usr/local/bin/github-api-helper.py`
-- `GITHUB_API_URL`: GitHub API base URL used by the helper, default `https://api.github.com`
-- `GITHUB_API_TIMEOUT_SECONDS`: helper HTTP timeout in seconds, default `30`
 
 Example:
 
