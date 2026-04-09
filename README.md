@@ -139,13 +139,10 @@ The container reads these environment variables from `.env`:
 - `GITHUB_ORGS`: optional comma-separated organizations to back up in addition to the owner account
 - `GITHUB_TOKEN`: your GitHub PAT, required
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`
+- `BACKUP_DATA_DIR`: backup root inside the container, default `/data`
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
 - `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
-
-Advanced/optional overrides:
-
-- `BACKUP_DATA_DIR`: custom data root inside the container, default `/data`
 
 Example:
 
@@ -161,14 +158,14 @@ GHORG_INCLUDE_SUBMODULES=true
 
 ## Where the Backup Is Stored
 
-All data is written to the Docker volume mounted at `/data`.
+All data is written to the Docker volume mounted at `BACKUP_DATA_DIR` inside the container. The default is `/data`.
 
 Inside the container, the layout looks like this:
 
-- `/data/mirrors/<target>_backup/` for repo and wiki mirrors
-- `/data/metadata/<target>/` for exported GitHub metadata
-- `/data/state/last-success.json` for the last successful run
-- `/data/logs/` for run logs
+- `<BACKUP_DATA_DIR>/mirrors/<target>_backup/` for repo and wiki mirrors
+- `<BACKUP_DATA_DIR>/metadata/<target>/` for exported GitHub metadata
+- `<BACKUP_DATA_DIR>/state/last-success.json` for the last successful run
+- `<BACKUP_DATA_DIR>/logs/` for run logs
 
 With the default Compose setup, Docker manages that storage in the `gh_backup_data` volume.
 

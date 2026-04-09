@@ -1,5 +1,9 @@
 .git
 .github
 .env
+.env.example
+docker-compose.yml
+README.md
 README.local.md
+tests
 tmp

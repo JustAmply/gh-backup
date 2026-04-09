@@ -1,29 +1,31 @@
-FROM python:3.14-slim
+# syntax=docker/dockerfile:1
+
+FROM python:3.14-slim AS python-builder
+
+ARG TARGETARCH
+ARG GITHUB_BACKUP_VERSION=0.61.5
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_NO_CACHE_DIR=1
+
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-compile "github-backup==${GITHUB_BACKUP_VERSION}"
+
+FROM debian:trixie-slim AS binary-fetcher
 
 ARG TARGETARCH
 ARG GHORG_VERSION=v1.11.10
-ARG GITHUB_BACKUP_VERSION=0.61.5
 ARG SUPERCRONIC_VERSION=v0.2.43
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
-        bash \
         ca-certificates \
         curl \
-        git \
-        git-lfs \
-        tzdata \
-        util-linux \
     && rm -rf /var/lib/apt/lists/*
-
-RUN python -m pip install --no-cache-dir "github-backup==${GITHUB_BACKUP_VERSION}"
 
 RUN case "${TARGETARCH}" in \
         amd64) \
@@ -63,13 +65,30 @@ RUN case "${TARGETARCH}" in \
     && echo "${supercronic_sha1}  /usr/local/bin/supercronic" | sha1sum -c - \
     && chmod +x /usr/local/bin/supercronic
 
+FROM python:3.14-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:${PATH}"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        bash \
+        ca-certificates \
+        git \
+        git-lfs \
+        tzdata \
+        util-linux \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state
 
-COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY scripts/run-backup.sh /usr/local/bin/run-backup.sh
-COPY scripts/validate.sh /usr/local/bin/validate.sh
-
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/run-backup.sh /usr/local/bin/validate.sh
+COPY --link --from=python-builder /opt/venv /opt/venv
+COPY --link --from=binary-fetcher /usr/local/bin/ghorg /usr/local/bin/supercronic /usr/local/bin/
+COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/validate.sh /usr/local/bin/
 
 WORKDIR /app
 VOLUME ["/data"]
