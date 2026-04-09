@@ -46,22 +46,22 @@ Copy-Item .env.example .env
 Set at least these values:
 
 ```dotenv
-GITHUB_OWNER=your-github-username
 GITHUB_TOKEN=your-token-here
 ```
 
 Optional:
 
+- `GITHUB_OWNER` if you want an explicit sanity check that the token belongs to that user
 - `GITHUB_ORGS` for extra orgs, comma-separated
 - `BACKUP_CRON` to change the schedule
 - `TZ` to change the timezone
 
-`GITHUB_OWNER` backs up repositories owned by the authenticated user behind `GITHUB_TOKEN`, including owned private repositories. Use `GITHUB_ORGS` to opt in to additional organizations.
+The backup always resolves the personal account from `GITHUB_TOKEN`, including the correct GitHub letter casing, before it starts. If you also set `GITHUB_OWNER`, it is treated as a sanity check and must match that authenticated account.
 
 ### 3. Start the Backup Container
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 What happens next:
@@ -135,7 +135,7 @@ If your organization uses SSO, GitHub may also require you to authorize the toke
 
 The container reads these environment variables from `.env`:
 
-- `GITHUB_OWNER`: your personal GitHub username, required
+- `GITHUB_OWNER`: optional sanity-check username for the personal account behind `GITHUB_TOKEN`
 - `GITHUB_ORGS`: optional comma-separated organizations to back up in addition to the owner account
 - `GITHUB_TOKEN`: your GitHub PAT, required
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`

@@ -100,7 +100,7 @@ create_repo() {
 }
 
 case "${target}" in
-  octocat)
+  octocat|OctoCat)
     create_repo "${path}/${output_dir}/public-repo"
     create_repo "${path}/${output_dir}/private-repo"
     create_repo "${path}/${output_dir}/public-repo.wiki"
@@ -142,26 +142,41 @@ printf 'unexpected supercronic args: %s\n' "$*" >&2
 exit 1
 EOF
 
+  cat > "${TEST_BIN_DIR}/python3" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ "${1:-}" != "-" ]]; then
+  printf 'unexpected python3 args: %s\n' "$*" >&2
+  exit 1
+fi
+cat >/dev/null
+printf '%s' "${TEST_GITHUB_AUTH_LOGIN:-octocat}"
+EOF
+
   chmod +x \
     "${TEST_BIN_DIR}/git" \
     "${TEST_BIN_DIR}/ghorg" \
     "${TEST_BIN_DIR}/github-backup" \
     "${TEST_BIN_DIR}/git-lfs" \
     "${TEST_BIN_DIR}/flock" \
-    "${TEST_BIN_DIR}/supercronic"
+    "${TEST_BIN_DIR}/supercronic" \
+    "${TEST_BIN_DIR}/python3"
 }
 
 run_backup() {
   local output_file="$1"
   local ghorg_scenario="${2:-success}"
   local orgs="${3:-my-org}"
+  local owner="${4:-octocat}"
+  local auth_login="${5:-${owner}}"
 
   env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
     HOME="${TMP_DIR}/home" \
     TEST_LOG_DIR="${TEST_LOG_DIR}" \
     TEST_GHORG_SCENARIO="${ghorg_scenario}" \
-    GITHUB_OWNER="octocat" \
+    TEST_GITHUB_AUTH_LOGIN="${auth_login}" \
+    GITHUB_OWNER="${owner}" \
     GITHUB_ORGS="${orgs}" \
     GITHUB_TOKEN="ghp_testtoken" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
@@ -173,8 +188,10 @@ run_backup_expect_success() {
   local output_file="$1"
   local ghorg_scenario="${2:-success}"
   local orgs="${3:-my-org}"
+  local owner="${4:-octocat}"
+  local auth_login="${5:-${owner}}"
 
-  if ! run_backup "${output_file}" "${ghorg_scenario}" "${orgs}"; then
+  if ! run_backup "${output_file}" "${ghorg_scenario}" "${orgs}" "${owner}" "${auth_login}"; then
     cat "${output_file}" >&2 || true
     fail "Expected backup scenario ${ghorg_scenario}/${orgs} to pass"
   fi
@@ -184,18 +201,21 @@ run_backup_expect_failure() {
   local output_file="$1"
   local ghorg_scenario="${2:-success}"
   local orgs="${3:-my-org}"
+  local owner="${4:-octocat}"
+  local auth_login="${5:-${owner}}"
 
-  if run_backup "${output_file}" "${ghorg_scenario}" "${orgs}"; then
+  if run_backup "${output_file}" "${ghorg_scenario}" "${orgs}" "${owner}" "${auth_login}"; then
     fail "Expected backup scenario ${ghorg_scenario}/${orgs} to fail"
   fi
 }
 
 run_validate_expect_success() {
   local output_file="${TMP_DIR}/validate-success.log"
+  local owner="${1:-octocat}"
 
   env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
-    GITHUB_OWNER="octocat" \
+    GITHUB_OWNER="${owner}" \
     GITHUB_TOKEN="ghp_testtoken" \
     bash "${ROOT_DIR}/scripts/validate.sh" >"${output_file}" 2>&1 || fail "Expected validate scenario to pass"
 }
@@ -219,8 +239,8 @@ main() {
   write_stubs
 
   run_validate_expect_success
-  run_validate_expect_failure "${TMP_DIR}/validate-missing-owner.log" "" "ghp_testtoken"
-  assert_contains "${TMP_DIR}/validate-missing-owner.log" "GITHUB_OWNER must be set"
+  run_validate_expect_success ""
+  run_validate_expect_success "change-me"
   run_validate_expect_failure "${TMP_DIR}/validate-empty-token.log" "octocat" ""
   assert_contains "${TMP_DIR}/validate-empty-token.log" "GitHub token value is empty"
 
@@ -236,6 +256,19 @@ main() {
   assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/my-org"
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"owner\": \"octocat\""
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"orgs\": [\"my-org\"]"
+
+  reset_logs
+  write_stubs
+  run_backup_expect_success "${TMP_DIR}/normalized-owner.log" "success" "" "octocat" "OctoCat"
+  assert_contains "${TMP_DIR}/normalized-owner.log" "Normalizing GITHUB_OWNER from octocat to OctoCat"
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone OctoCat --scm=github --clone-type=user --token=ghp_testtoken --path=${TEST_DATA_DIR}/mirrors --output-dir=OctoCat_backup --backup --clone-wiki --github-user-option=owner --include-submodules"
+  assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/OctoCat"
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"owner\": \"OctoCat\""
+
+  reset_logs
+  write_stubs
+  run_backup_expect_failure "${TMP_DIR}/owner-mismatch.log" "success" "" "octocat" "someoneelse"
+  assert_contains "${TMP_DIR}/owner-mismatch.log" "GITHUB_OWNER (octocat) must match the GitHub account behind GITHUB_TOKEN (someoneelse)"
 
   reset_logs
   write_stubs

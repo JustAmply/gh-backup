@@ -14,12 +14,10 @@ die() {
 : "${GITHUB_TOKEN:=}"
 : "${BACKUP_CRON:=17 2 * * *}"
 
-for cmd in ghorg github-backup git git-lfs supercronic flock bash; do
+for cmd in ghorg github-backup git git-lfs supercronic flock bash python3; do
   command -v "${cmd}" >/dev/null 2>&1 || die "Required command missing: ${cmd}"
 done
 
-[[ -n "${GITHUB_OWNER}" ]] || die "GITHUB_OWNER must be set"
-[[ "${GITHUB_OWNER}" != "change-me" ]] || die "GITHUB_OWNER must be configured with a real account name"
 token_value="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
 [[ -n "${token_value}" ]] || die "GitHub token value is empty"
 

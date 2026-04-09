@@ -1,9 +1,11 @@
 services:
   gh-backup:
+    build:
+      context: .
     image: ghcr.io/justamply/gh-backup:latest
     restart: unless-stopped
     environment:
-      GITHUB_OWNER: ${GITHUB_OWNER:-change-me}
+      GITHUB_OWNER: ${GITHUB_OWNER:-}
       GITHUB_ORGS: ${GITHUB_ORGS:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       BACKUP_CRON: ${BACKUP_CRON:-17 2 * * *}
