@@ -59,11 +59,15 @@ run_ghorg_backup() {
     --scm=github
     --clone-type="${clone_type}"
     --token="${GITHUB_TOKEN}"
-    --path=/data/mirrors
+    --path="${BACKUP_DATA_DIR}/mirrors"
     --output-dir="${output_dir}"
     --backup
     --clone-wiki
   )
+
+  if [[ "${clone_type}" == "user" ]]; then
+    args+=(--github-user-option=owner)
+  fi
 
   if bool_is_true "${GHORG_INCLUDE_SUBMODULES:-true}"; then
     args+=(--include-submodules)
@@ -75,7 +79,7 @@ run_ghorg_backup() {
 
 fetch_lfs_for_target() {
   local target="$1"
-  local mirror_root="/data/mirrors/${target}_backup"
+  local mirror_root="${BACKUP_DATA_DIR}/mirrors/${target}_backup"
   local repo_dir
 
   if [[ ! -d "${mirror_root}" ]]; then
@@ -94,7 +98,7 @@ fetch_lfs_for_target() {
 
 run_metadata_backup() {
   local target="$1"
-  local metadata_dir="/data/metadata/${target}"
+  local metadata_dir="${BACKUP_DATA_DIR}/metadata/${target}"
   local args=(
     --token "${GITHUB_TOKEN}"
     --output-directory "${metadata_dir}"
@@ -136,22 +140,23 @@ run_metadata_backup() {
 : "${GITHUB_OWNER:=}"
 : "${GITHUB_ORGS:=}"
 : "${GITHUB_TOKEN:=}"
+: "${BACKUP_DATA_DIR:=/data}"
 
 [[ -n "${GITHUB_OWNER}" ]] || die "GITHUB_OWNER must be set"
 
 GITHUB_TOKEN="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
 [[ -n "${GITHUB_TOKEN}" ]] || die "GitHub token value is empty"
 
-mkdir -p /data/logs /data/metadata /data/mirrors /data/state
+mkdir -p "${BACKUP_DATA_DIR}/logs" "${BACKUP_DATA_DIR}/metadata" "${BACKUP_DATA_DIR}/mirrors" "${BACKUP_DATA_DIR}/state"
 
 configure_github_https_auth
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
-run_log="/data/logs/${run_id}.log"
+run_log="${BACKUP_DATA_DIR}/logs/${run_id}.log"
 touch "${run_log}"
 exec > >(tee -a "${run_log}") 2>&1
 
-exec 9>/data/state/backup.lock
+exec 9>"${BACKUP_DATA_DIR}/state/backup.lock"
 if ! flock -n 9; then
   die "Another backup run is already in progress"
 fi
@@ -215,7 +220,7 @@ if [[ "${overall_status}" -eq 0 ]]; then
     orgs_json+="]"
   fi
 
-  cat > /data/state/last-success.json <<EOF
+  cat > "${BACKUP_DATA_DIR}/state/last-success.json" <<EOF
 {
   "run_id": "${run_id}",
   "finished_at": "$(date -u --iso-8601=seconds)",

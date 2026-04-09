@@ -2,17 +2,23 @@ name: docker-image
 
 on:
   pull_request:
-    paths-ignore:
-      - README.md
-      - .github/dependabot.yml
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/docker-image.yml"
+      - "Dockerfile"
+      - "scripts/**"
+      - "tests/**"
   push:
     branches:
       - main
     tags:
       - "v*"
-    paths-ignore:
-      - README.md
-      - .github/dependabot.yml
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/docker-image.yml"
+      - "Dockerfile"
+      - "scripts/**"
+      - "tests/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,10 +26,45 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
+  pull-requests: read
 
 jobs:
-  test:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ github.ref_type == 'tag' && 'true' || steps.filter.outputs.image }}
+      shell: ${{ github.ref_type == 'tag' && 'true' || steps.filter.outputs.shell }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            image:
+              - '.dockerignore'
+              - 'Dockerfile'
+              - 'scripts/**'
+            shell:
+              - 'scripts/**'
+              - 'tests/**'
+
+  shell-test:
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run regression tests
+        run: bash tests/run-backup-regression.sh
+
+  docker-validate:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -52,10 +93,19 @@ jobs:
             gh-backup:test validate
 
   publish:
-    if: github.event_name == 'push'
     needs:
-      - test
+      - changes
+      - shell-test
+      - docker-validate
+    if: >-
+      github.event_name == 'push' &&
+      needs.changes.outputs.image == 'true' &&
+      (needs.shell-test.result == 'success' || needs.shell-test.result == 'skipped') &&
+      needs.docker-validate.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
