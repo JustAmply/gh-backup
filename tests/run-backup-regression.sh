@@ -88,7 +88,6 @@ write_stubs() {
 set -Eeuo pipefail
 printf '%s\n' "$*" >> "${TEST_LOG_DIR}/git.log"
 git_scenario="${TEST_GIT_SCENARIO:-success}"
-submodule_scenario="${TEST_SUBMODULE_SCENARIO:-success}"
 
 if [[ "$1" == "config" ]]; then
   exit 0
@@ -118,89 +117,27 @@ if [[ "$1" == "clone" && "$2" == "--mirror" ]]; then
   exit 0
 fi
 
-if [[ "$1" == "clone" && "$2" == "--quiet" && "$3" == "--no-checkout" && "$4" == "--shared" ]]; then
-  mkdir -p "$6"
-  printf '%s\n' "$5" > "$6/.stub-origin"
-  exit 0
-fi
-
 if [[ "$1" == "-C" ]]; then
   repo_dir="$2"
   shift 2
+
   if [[ "$1" == "rev-parse" && "$2" == "--is-bare-repository" ]]; then
     echo true
     exit 0
   fi
-  if [[ "$1" == "rev-parse" && "$2" == "--verify" ]]; then
-    if [[ "${git_scenario}" == "empty-repo-no-commits" && "${repo_dir}" == *"/octocat_backup/empty-repo" && "$3" == "HEAD^{commit}" ]]; then
-      exit 1
-    fi
-    echo "0123456789abcdef0123456789abcdef01234567"
-    exit 0
-  fi
-  if [[ "$1" == "checkout" && "$2" == "--quiet" ]]; then
-    origin="$(cat "${repo_dir}/.stub-origin" 2>/dev/null || true)"
-    if [[ "${git_scenario}" == "empty-repo-no-commits" && "${origin}" == *"/octocat_backup/empty-repo" ]]; then
-      exit 1
-    fi
-    exit 0
-  fi
-  if [[ "$1" == "submodule" && "$2" == "init" ]]; then
-    exit 0
-  fi
+
   if [[ "$1" == "remote" && "$2" == "set-url" ]]; then
     printf '%s\n' "$4" > "${repo_dir}/.stub-remote-origin"
     exit 0
   fi
+
   if [[ "$1" == "remote" && "$2" == "update" ]]; then
     exit 0
   fi
+
   if [[ "$1" == "lfs" && "$2" == "fetch" ]]; then
     exit 0
   fi
-  case "$1 $2" in
-    "config --file")
-      origin="$(cat "${repo_dir}/.stub-origin")"
-      if [[ "$4" == "--name-only" ]]; then
-        if [[ "${origin}" == *"/octocat_backup/public-repo" ]]; then
-          echo "submodule.libs/private-dependency.path"
-        fi
-        exit 0
-      fi
-      if [[ "$4" == "--get" ]]; then
-        if [[ "${origin}" == *"/octocat_backup/public-repo" && "$5" == "submodule.libs/private-dependency.path" ]]; then
-          if [[ "${submodule_scenario}" == "malicious-path" ]]; then
-            echo "../../state"
-          else
-            echo "libs/private-dependency"
-          fi
-        fi
-        exit 0
-      fi
-      ;;
-    "config --get")
-      if [[ "$3" == "remote.origin.url" ]]; then
-        cat "${repo_dir}/.stub-remote-origin"
-        exit 0
-      fi
-      origin="$(cat "${repo_dir}/.stub-origin")"
-      if [[ "${origin}" == *"/octocat_backup/public-repo" && "$3" == "submodule.libs/private-dependency.url" ]]; then
-        if [[ "${submodule_scenario}" == "missing-url" ]]; then
-          exit 1
-        fi
-        if [[ "${submodule_scenario}" == "relative-url" ]]; then
-          echo "../private-dependency.git"
-        else
-          echo "https://github.com/octocat/private-dependency.git"
-        fi
-      fi
-      exit 0
-      ;;
-    "rev-parse HEAD:libs/private-dependency"|"rev-parse HEAD:../../state")
-      echo "0123456789abcdef0123456789abcdef01234567"
-      exit 0
-      ;;
-  esac
 fi
 
 printf 'unexpected git args: %s\n' "$*" >&2
@@ -275,8 +212,7 @@ run_backup() {
   local output_file="$1"
   local api_scenario="$2"
   local git_scenario="${3:-success}"
-  local submodule_scenario="${4:-success}"
-  local owner="${5:-octocat}"
+  local owner="${4:-octocat}"
 
   start_mock_api "${api_scenario}"
 
@@ -285,7 +221,6 @@ run_backup() {
     HOME="${TMP_DIR}/home" \
     TEST_LOG_DIR="${TEST_LOG_DIR}" \
     TEST_GIT_SCENARIO="${git_scenario}" \
-    TEST_SUBMODULE_SCENARIO="${submodule_scenario}" \
     GITHUB_OWNER="${owner}" \
     GITHUB_ORGS="my-org" \
     GITHUB_TOKEN="ghp_testtoken" \
@@ -300,11 +235,10 @@ run_backup_expect_success() {
   local output_file="$1"
   local api_scenario="$2"
   local git_scenario="${3:-success}"
-  local submodule_scenario="${4:-success}"
 
-  if ! run_backup "${output_file}" "${api_scenario}" "${git_scenario}" "${submodule_scenario}"; then
+  if ! run_backup "${output_file}" "${api_scenario}" "${git_scenario}"; then
     cat "${output_file}" >&2 || true
-    fail "Expected ${api_scenario}/${git_scenario}/${submodule_scenario} backup scenario to pass"
+    fail "Expected ${api_scenario}/${git_scenario} backup scenario to pass"
   fi
 }
 
@@ -312,11 +246,10 @@ run_backup_expect_failure() {
   local output_file="$1"
   local api_scenario="$2"
   local git_scenario="${3:-success}"
-  local submodule_scenario="${4:-success}"
-  local owner="${5:-octocat}"
+  local owner="${4:-octocat}"
 
-  if run_backup "${output_file}" "${api_scenario}" "${git_scenario}" "${submodule_scenario}" "${owner}"; then
-    fail "Expected ${api_scenario}/${git_scenario}/${submodule_scenario} backup scenario to fail"
+  if run_backup "${output_file}" "${api_scenario}" "${git_scenario}" "${owner}"; then
+    fail "Expected ${api_scenario}/${git_scenario} backup scenario to fail"
   fi
 }
 
@@ -363,22 +296,13 @@ main() {
   run_backup_expect_success "${TMP_DIR}/success-output.log" "success"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/private-repo"
-  assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-dependency.git ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency"
   assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/public-repo.wiki.git ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo.wiki.git"
-  assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency lfs fetch --all"
+  assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo lfs fetch --all"
+  assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/private-repo lfs fetch --all"
+  assert_not_contains "${TEST_LOG_DIR}/git.log" "private-dependency.git"
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org"
-
-  reset_logs
-  write_stubs
-  run_backup_expect_success "${TMP_DIR}/empty-repo.log" "empty-repo" "empty-repo-no-commits"
-  assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/empty-repo.git ${TEST_DATA_DIR}/mirrors/octocat_backup/empty-repo"
-  assert_not_contains "${TEST_LOG_DIR}/git.log" "clone --quiet --no-checkout --shared ${TEST_DATA_DIR}/mirrors/octocat_backup/empty-repo"
-  assert_contains "${TMP_DIR}/empty-repo.log" "Skipping submodule scan for empty-repo at HEAD: repository has no commits"
-
-  reset_logs
-  write_stubs
-  run_backup_expect_success "${TMP_DIR}/relative-submodule.log" "success" "success" "relative-url"
-  assert_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-dependency.git ${TEST_DATA_DIR}/mirrors/octocat_backup/.submodules/public-repo/libs/private-dependency"
+  assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/octocat"
+  assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/my-org"
 
   reset_logs
   write_stubs
@@ -399,17 +323,6 @@ main() {
   write_stubs
   run_backup_expect_failure "${TMP_DIR}/sso-failure.log" "sso-failure"
   assert_contains "${TMP_DIR}/sso-failure.log" "GitHub repo discovery failed (403)"
-
-  reset_logs
-  write_stubs
-  run_backup_expect_failure "${TMP_DIR}/malicious-submodule.log" "success" "success" "malicious-path"
-  assert_contains "${TMP_DIR}/malicious-submodule.log" "owner backup failed for octocat"
-  assert_not_contains "${TEST_LOG_DIR}/git.log" "clone --mirror https://github.com/octocat/private-dependency.git"
-
-  reset_logs
-  write_stubs
-  run_backup_expect_failure "${TMP_DIR}/missing-submodule-url.log" "success" "success" "missing-url"
-  assert_contains "${TMP_DIR}/missing-submodule-url.log" "failed to resolve submodule metadata for public-repo/libs/private-dependency"
 }
 
 main "$@"

@@ -141,7 +141,7 @@ The container reads these environment variables from `.env`:
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
-- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
+- `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`; applies to `ghorg`-backed organization backups
 
 Advanced/optional overrides:
 
