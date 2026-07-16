@@ -178,3 +178,10 @@ Use this when you want:
 - repository mirrors plus metadata exports in one place
 
 This is a backup and archive setup, not a one-click restore product. Git mirrors can later be pushed to a new remote with `git push --mirror`. Exported metadata is stored as archive data for recovery and reference.
+
+## Recovery Contract and Architecture
+
+The precise recovery promises, limitations, and objectives are documented in
+[`docs/recovery-contract.md`](docs/recovery-contract.md). Domain terminology is
+defined in [`CONTEXT.md`](CONTEXT.md), and architectural decisions are recorded
+under [`docs/adr/`](docs/adr/).
