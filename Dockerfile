@@ -14,8 +14,8 @@ RUN python -m venv /opt/venv \
 FROM debian:trixie-slim AS binary-fetcher
 
 ARG TARGETARCH
-ARG GHORG_VERSION=v1.11.10
-ARG SUPERCRONIC_VERSION=v0.2.43
+ARG GHORG_VERSION=v1.11.13
+ARG SUPERCRONIC_VERSION=v0.2.47
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -30,11 +30,11 @@ RUN apt-get update \
 RUN case "${TARGETARCH}" in \
         amd64) \
             ghorg_archive="ghorg_${GHORG_VERSION#v}_Linux_x86_64.tar.gz" \
-            && ghorg_sha256="28ccf93b5a320ec31589e1b84d3e58fc5661fbbeb1b6e892ca59346790c96850" \
+            && ghorg_sha256="8d581ac1fd16392265abea4f3494a1a52fc561c6227ad935593deb052d647302" \
             ;; \
         arm64) \
             ghorg_archive="ghorg_${GHORG_VERSION#v}_Linux_arm64.tar.gz" \
-            && ghorg_sha256="ad807fa207a85a1ba373a25509d0c33a7ce6ac7bc4adb8d094f19df142a40f0f" \
+            && ghorg_sha256="ef5229b8a8c39de8f8008f80212e10029cf858aaa4920b793b457963a409c242" \
             ;; \
         *) \
             echo "Unsupported TARGETARCH for ghorg: ${TARGETARCH}" >&2 \
@@ -50,11 +50,11 @@ RUN case "${TARGETARCH}" in \
 RUN case "${TARGETARCH}" in \
         amd64) \
             supercronic_bin="supercronic-linux-amd64" \
-            && supercronic_sha1="f97b92132b61a8f827c3faf67106dc0e4467ccf2" \
+            && supercronic_sha256="dcb1403c188a9438c47d4bba82a9c357fc9351ce91627fb2bae627f0f5becfc4" \
             ;; \
         arm64) \
             supercronic_bin="supercronic-linux-arm64" \
-            && supercronic_sha1="5c6266786c2813d6f8a99965d84452faae42b483" \
+            && supercronic_sha256="e1124aa34294e2bb8ab7002f347f4363ba35097f3daf4d3c44e9d813c1fb2bb8" \
             ;; \
         *) \
             echo "Unsupported TARGETARCH for supercronic: ${TARGETARCH}" >&2 \
@@ -62,7 +62,7 @@ RUN case "${TARGETARCH}" in \
             ;; \
     esac \
     && curl -fsSL "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/${supercronic_bin}" -o /usr/local/bin/supercronic \
-    && echo "${supercronic_sha1}  /usr/local/bin/supercronic" | sha1sum -c - \
+    && echo "${supercronic_sha256}  /usr/local/bin/supercronic" | sha256sum -c - \
     && chmod +x /usr/local/bin/supercronic
 
 FROM python:3.14-slim
