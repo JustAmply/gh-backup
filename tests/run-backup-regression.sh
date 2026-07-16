@@ -149,6 +149,14 @@ EOF
   cat > "${TEST_BIN_DIR}/github-backup" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" == "--version" ]]; then
+  printf '%s\n' "github-backup 0.61.5"
+  exit 0
+fi
+if [[ "${1:-}" == "--help" ]]; then
+  printf '%s\n' "--private --fork --issues --issue-comments --issue-events --pulls --pull-comments --pull-commits --pull-details --labels --milestones --releases --assets --attachments --security-advisories --gists --starred-gists --starred --watched --followers --following --organization"
+  exit 0
+fi
 normalized_args=()
 for arg in "$@"; do
   if [[ "${arg}" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
@@ -259,6 +267,7 @@ run_validate_expect_success() {
   env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
     GH_BACKUP_RUNNER_PYTHON="python" \
+    GH_BACKUP_COMMAND_SHELL="$(cygpath -w /usr/bin/bash 2>/dev/null || true)" \
     PYTHONPATH="${ROOT_DIR}" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
     BACKUP_MIN_FREE_GB="0" \
@@ -275,6 +284,7 @@ run_validate_expect_failure() {
   if env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
     GH_BACKUP_RUNNER_PYTHON="python" \
+    GH_BACKUP_COMMAND_SHELL="$(cygpath -w /usr/bin/bash 2>/dev/null || true)" \
     PYTHONPATH="${ROOT_DIR}" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
     BACKUP_MIN_FREE_GB="0" \

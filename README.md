@@ -9,7 +9,8 @@ This container creates a local archive of the GitHub account and organizations y
 - repository mirrors with full Git history
 - wiki mirrors
 - Git LFS objects
-- issues, pull requests, comments, labels, milestones, and releases
+- issues, pull requests, review comments, fork metadata, labels, milestones, and releases
+- public security advisories available to the configured token
 - release assets and issue / pull request attachments
 - personal gists, starred items, watched repos, followers, and following for your main account
 - automatic scheduled runs inside the container
@@ -214,4 +215,5 @@ This is a backup and archive setup, not a one-click restore product. Git mirrors
 The precise recovery promises, limitations, and objectives are documented in
 [`docs/recovery-contract.md`](docs/recovery-contract.md). Domain terminology is
 defined in [`CONTEXT.md`](CONTEXT.md), and architectural decisions are recorded
-under [`docs/adr/`](docs/adr/).
+under [`docs/adr/`](docs/adr/). The versioned resource and restoration matrix is
+in [`docs/coverage.md`](docs/coverage.md).

@@ -93,6 +93,8 @@ class CommandBackupAdapterTests(unittest.TestCase):
             self.assertEqual(commands.calls[0][0], "github-backup")
             self.assertEqual(commands.calls[0][-2:], ["--organization", "my-org"])
             self.assertIn("--private", commands.calls[0])
+            self.assertIn("--fork", commands.calls[0])
+            self.assertIn("--security-advisories", commands.calls[0])
             self.assertIn("--pull-details", commands.calls[0])
             self.assertIn("--assets", commands.calls[0])
             self.assertIn("--attachments", commands.calls[0])

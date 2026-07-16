@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import json
-import subprocess
-from collections.abc import Callable
+import os
 from pathlib import Path
 
+from gh_backup.coverage import CoveragePolicy
+from gh_backup.process import CommandRunner, command_runner_from_environment
 from gh_backup.runner import BackupConfig
 from gh_backup.restore import verify_mirror_restore
-
-
-CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class CommandBackupAdapter:
@@ -23,23 +20,8 @@ class CommandBackupAdapter:
         run_command: CommandRunner | None = None,
     ) -> None:
         self._config = config
-        self._run_command = run_command or self._command_runner_from_environment()
-
-    @staticmethod
-    def _command_runner_from_environment() -> CommandRunner:
-        command_shell = os.environ.get("GH_BACKUP_COMMAND_SHELL")
-        if not command_shell:
-            return subprocess.run
-
-        def run_through_shell(
-            args: list[str], **kwargs: object
-        ) -> subprocess.CompletedProcess[str]:
-            return subprocess.run(
-                [command_shell, "-c", 'exec "$@"', "gh-backup", *args],
-                **kwargs,
-            )
-
-        return run_through_shell
+        self._run_command = run_command or command_runner_from_environment()
+        self._coverage = CoveragePolicy.load_default()
 
     def configure_authentication(self) -> None:
         os.environ["GHORG_GITHUB_TOKEN"] = self._config.token
@@ -98,33 +80,10 @@ class CommandBackupAdapter:
             self._config.token,
             "--output-directory",
             str(metadata_dir),
-            "--private",
-            "--issues",
-            "--issue-comments",
-            "--issue-events",
-            "--pulls",
-            "--pull-comments",
-            "--pull-commits",
-            "--pull-details",
-            "--labels",
-            "--milestones",
-            "--releases",
-            "--assets",
-            "--attachments",
+            *self._coverage.metadata_arguments(target_kind),
         ]
         if target_kind == "organization":
             args.append("--organization")
-        else:
-            args.extend(
-                [
-                    "--gists",
-                    "--starred-gists",
-                    "--starred",
-                    "--watched",
-                    "--followers",
-                    "--following",
-                ]
-            )
         args.append(target)
         self._run_command(args, check=True, text=True)
 
