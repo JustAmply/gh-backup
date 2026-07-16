@@ -40,6 +40,11 @@ write_stubs() {
   cat > "${TEST_BIN_DIR}/git" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+args=("$@")
+if [[ "${args[0]:-}" == "-C" ]] && command -v cygpath >/dev/null 2>&1; then
+  args[1]="$(cygpath -u "${args[1]}")"
+  set -- "${args[@]}"
+fi
 printf '%s\n' "$*" >> "${TEST_LOG_DIR}/git.log"
 
 if [[ "$1" == "config" ]]; then
@@ -57,6 +62,10 @@ if [[ "$1" == "-C" ]]; then
   if [[ "$1" == "lfs" && "$2" == "fetch" ]]; then
     exit 0
   fi
+
+  if [[ "$1" == "fsck" && "$2" == "--full" ]]; then
+    exit 0
+  fi
 fi
 
 printf 'unexpected git args: %s\n' "$*" >&2
@@ -66,6 +75,16 @@ EOF
   cat > "${TEST_BIN_DIR}/ghorg" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+normalized_args=()
+for arg in "$@"; do
+  if [[ "${arg}" == --path=* ]] && command -v cygpath >/dev/null 2>&1; then
+    normalized_args+=("--path=$(cygpath -u "${arg#--path=}")")
+  else
+    normalized_args+=("${arg}")
+  fi
+done
+set -- "${normalized_args[@]}"
 printf '%s\n' "$*" >> "${TEST_LOG_DIR}/ghorg.log"
 
 scenario="${TEST_GHORG_SCENARIO:-success}"
@@ -117,7 +136,15 @@ EOF
   cat > "${TEST_BIN_DIR}/github-backup" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-printf '%s\n' "$*" >> "${TEST_LOG_DIR}/github-backup.log"
+normalized_args=()
+for arg in "$@"; do
+  if [[ "${arg}" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
+    normalized_args+=("$(cygpath -u "${arg}")")
+  else
+    normalized_args+=("${arg}")
+  fi
+done
+printf '%s\n' "${normalized_args[*]}" >> "${TEST_LOG_DIR}/github-backup.log"
 EOF
 
   cat > "${TEST_BIN_DIR}/git-lfs" <<'EOF'
@@ -176,6 +203,9 @@ run_backup() {
     TEST_LOG_DIR="${TEST_LOG_DIR}" \
     TEST_GHORG_SCENARIO="${ghorg_scenario}" \
     TEST_GITHUB_AUTH_LOGIN="${auth_login}" \
+    GH_BACKUP_RUNNER_PYTHON="python" \
+    GH_BACKUP_COMMAND_SHELL="$(cygpath -w /usr/bin/bash 2>/dev/null || true)" \
+    PYTHONPATH="${ROOT_DIR}" \
     GITHUB_OWNER="${owner}" \
     GITHUB_ORGS="${orgs}" \
     GITHUB_TOKEN="ghp_testtoken" \
@@ -255,7 +285,8 @@ main() {
   assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/octocat"
   assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/my-org"
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"owner\": \"octocat\""
-  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"orgs\": [\"my-org\"]"
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"orgs\": ["
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"my-org\""
 
   reset_logs
   write_stubs

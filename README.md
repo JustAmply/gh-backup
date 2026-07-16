@@ -164,8 +164,14 @@ Inside the container, the layout looks like this:
 
 - `<BACKUP_DATA_DIR>/mirrors/<target>_backup/` for repo and wiki mirrors
 - `<BACKUP_DATA_DIR>/metadata/<target>/` for exported GitHub metadata
-- `<BACKUP_DATA_DIR>/state/last-success.json` for the last successful run
+- `<BACKUP_DATA_DIR>/state/runs/<run-id>.json` for immutable run evidence
+- `<BACKUP_DATA_DIR>/state/last-run.json` for the latest completed attempt
+- `<BACKUP_DATA_DIR>/state/last-success.json` for the latest verified recovery point
 - `<BACKUP_DATA_DIR>/logs/` for run logs
+
+Every required target records repository mirroring, LFS collection, metadata
+export, and Git integrity verification separately. A failed run updates
+`last-run.json` but never replaces the previous `last-success.json`.
 
 With the default Compose setup, Docker manages that storage in the `gh_backup_data` volume.
 

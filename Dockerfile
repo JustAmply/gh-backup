@@ -71,6 +71,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:${PATH}"
+ENV PYTHONPATH="/opt/gh-backup"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -88,6 +89,7 @@ RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state
 
 COPY --link --from=python-builder /opt/venv /opt/venv
 COPY --link --from=binary-fetcher /usr/local/bin/ghorg /usr/local/bin/supercronic /usr/local/bin/
+COPY --link gh_backup /opt/gh-backup/gh_backup
 COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/validate.sh /usr/local/bin/
 
 WORKDIR /app
