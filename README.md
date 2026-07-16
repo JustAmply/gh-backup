@@ -192,6 +192,11 @@ Every required target records repository mirroring, LFS collection, metadata
 export, and Git integrity verification separately. A failed run updates
 `last-run.json` but never replaces the previous `last-success.json`.
 
+Verification parses every exported JSON file, runs `git fsck --full` for every
+discovered mirror, and performs a non-destructive local `git push --mirror`
+restore drill for one mirror per target. The drill compares every restored ref
+and object ID before its temporary destination is removed.
+
 With the default Compose setup, Docker manages that storage in the `gh_backup_data` volume.
 
 ## What This Is Good For

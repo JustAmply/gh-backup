@@ -123,12 +123,35 @@ class CommandBackupAdapterTests(unittest.TestCase):
             )
 
             adapter.fetch_lfs("OctoCat")
-            adapter.verify_backup("OctoCat")
+            detail = adapter.verify_backup("OctoCat")
 
             lfs_calls = [call for call in commands.calls if call[-3:] == ["lfs", "fetch", "--all"]]
             fsck_calls = [call for call in commands.calls if call[-2:] == ["fsck", "--full"]]
             self.assertEqual(len(lfs_calls), 2)
             self.assertEqual(len(fsck_calls), 2)
+            self.assertIn("2 mirrors passed git fsck", detail)
+            self.assertIn("local restore drill matched 0 refs", detail)
+
+    def test_verification_rejects_unreadable_metadata_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "mirrors" / "OctoCat_backup").mkdir(parents=True)
+            metadata_dir = data_dir / "metadata" / "OctoCat"
+            metadata_dir.mkdir(parents=True)
+            (metadata_dir / "issues.json").write_text("not-json", encoding="utf-8")
+            adapter = CommandBackupAdapter(
+                BackupConfig(
+                    owner="OctoCat",
+                    orgs=(),
+                    token="secret-token",
+                    data_dir=data_dir,
+                    include_submodules=True,
+                ),
+                run_command=RecordingCommandRunner(),
+            )
+
+            with self.assertRaisesRegex(ValueError, "Expecting value"):
+                adapter.verify_backup("OctoCat")
 
 
 if __name__ == "__main__":

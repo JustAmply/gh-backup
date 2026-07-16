@@ -65,7 +65,7 @@ class BackupAdapter(Protocol):
 
     def export_metadata(self, target: str, target_kind: str) -> None: ...
 
-    def verify_backup(self, target: str) -> None: ...
+    def verify_backup(self, target: str) -> str | None: ...
 
 
 class BackupRunner:
@@ -106,7 +106,7 @@ class BackupRunner:
         all_targets_succeeded = True
         for target, target_kind in self._targets():
             target_succeeded = True
-            stages: list[tuple[str, Callable[[], None]]] = [
+            stages: list[tuple[str, Callable[[], str | None]]] = [
                 (
                     "repository_mirror",
                     lambda target=target, target_kind=target_kind: (
@@ -157,11 +157,11 @@ class BackupRunner:
         manifest: RunManifest,
         target: str,
         stage: str,
-        operation: Callable[[], None],
+        operation: Callable[[], str | None],
     ) -> bool:
         started_at = self._clock()
         try:
-            operation()
+            detail = operation()
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             failure_names = {
@@ -186,6 +186,7 @@ class BackupRunner:
             status="succeeded",
             started_at=started_at,
             finished_at=self._clock(),
+            detail=detail,
         )
         return True
 

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 from gh_backup.runner import BackupConfig
+from gh_backup.restore import verify_mirror_restore
 
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -134,16 +136,37 @@ class CommandBackupAdapter:
                 text=True,
             )
 
-    def verify_backup(self, target: str) -> None:
+    def verify_backup(self, target: str) -> str:
         metadata_dir = self._config.data_dir / "metadata" / target
         if not metadata_dir.is_dir():
             raise RuntimeError(f"Metadata directory missing: {metadata_dir}")
-        for repository in self._bare_repositories(target):
+        json_files = sorted(metadata_dir.rglob("*.json"))
+        for json_file in json_files:
+            with json_file.open(encoding="utf-8") as handle:
+                json.load(handle)
+
+        repositories = self._bare_repositories(target)
+        for repository in repositories:
             self._run_command(
                 ["git", "-C", str(repository), "fsck", "--full"],
                 check=True,
                 text=True,
             )
+        restore_detail = "no repository mirror required a restore drill"
+        if repositories:
+            evidence = verify_mirror_restore(
+                source=repositories[0],
+                workspace=self._config.data_dir / "state" / "restore-drills",
+                run_command=self._run_command,
+            )
+            restore_detail = (
+                f"local restore drill matched {evidence.ref_count} refs for "
+                f"{evidence.source.name}"
+            )
+        return (
+            f"{len(repositories)} mirrors passed git fsck; "
+            f"{len(json_files)} metadata JSON files parsed; {restore_detail}"
+        )
 
     def _bare_repositories(self, target: str) -> list[Path]:
         mirror_root = self._config.data_dir / "mirrors" / f"{target}_backup"

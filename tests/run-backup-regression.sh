@@ -51,6 +51,10 @@ if [[ "$1" == "config" ]]; then
   exit 0
 fi
 
+if [[ "$1" == "init" && "$2" == "--bare" ]]; then
+  exit 0
+fi
+
 if [[ "$1" == "-C" ]]; then
   shift 2
 
@@ -64,6 +68,15 @@ if [[ "$1" == "-C" ]]; then
   fi
 
   if [[ "$1" == "fsck" && "$2" == "--full" ]]; then
+    exit 0
+  fi
+
+  if [[ "$1" == "for-each-ref" ]]; then
+    printf '%s\n' "refs/heads/main 0123456789abcdef"
+    exit 0
+  fi
+
+  if [[ "$1" == "push" && "$2" == "--mirror" ]]; then
     exit 0
   fi
 fi
