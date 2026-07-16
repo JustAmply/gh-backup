@@ -249,3 +249,15 @@ Token handling and container privileges are documented in
 [`docs/security.md`](docs/security.md).
 Operational monitoring, encrypted offsite snapshots, retention, and recovery
 commands are documented in [`docs/operations.md`](docs/operations.md).
+
+## Development checks
+
+Run the same unit and shell regression suite used by CI:
+
+```bash
+bash scripts/check.sh
+```
+
+Pull requests also receive dependency and container vulnerability review. Images
+published from `main` or version tags carry an SBOM, maximum BuildKit provenance,
+and a GitHub artifact attestation bound to the published digest.
