@@ -25,11 +25,17 @@ class BackupConfig:
     token: str
     data_dir: Path
     include_submodules: bool
+    token_file: Path | None = None
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str]) -> BackupConfig:
         owner = environment.get("GITHUB_OWNER", "").strip()
-        token = environment.get("GITHUB_TOKEN", "").strip("\r\n")
+        configured_token_file = environment.get("GITHUB_TOKEN_FILE", "").strip()
+        token_file = Path(configured_token_file) if configured_token_file else None
+        if token_file is not None:
+            token = token_file.read_text(encoding="utf-8").strip("\r\n")
+        else:
+            token = environment.get("GITHUB_TOKEN", "").strip("\r\n")
         if not owner:
             raise ValueError("GITHUB_OWNER must contain the authenticated login")
         if not token:
@@ -53,6 +59,7 @@ class BackupConfig:
             token=token,
             data_dir=Path(environment.get("BACKUP_DATA_DIR", "/data")),
             include_submodules=include_submodules,
+            token_file=token_file,
         )
 
 
@@ -204,13 +211,19 @@ def main() -> int:
     log_file = os.environ.get(
         "GH_BACKUP_LOG_FILE", str(config.data_dir / "logs" / f"{run_id}.log")
     )
-    return BackupRunner(
-        config=config,
-        adapter=CommandBackupAdapter(config),
-        run_id=run_id,
-        log_file=log_file,
-        clock=lambda: datetime.now().astimezone(),
-    ).run()
+    adapter = CommandBackupAdapter(config)
+    try:
+        return BackupRunner(
+            config=config,
+            adapter=adapter,
+            run_id=run_id,
+            log_file=log_file,
+            clock=lambda: datetime.now().astimezone(),
+        ).run()
+    finally:
+        adapter.cleanup()
+        if os.environ.get("GH_BACKUP_EPHEMERAL_TOKEN_FILE") == "true":
+            Path(os.environ["GITHUB_TOKEN_FILE"]).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from gh_backup.coverage import CoveragePolicy
@@ -22,14 +24,46 @@ class CommandBackupAdapter:
         self._config = config
         self._run_command = run_command or command_runner_from_environment()
         self._coverage = CoveragePolicy.load_default()
+        self._owned_token_file: Path | None = None
+        self._owned_git_config: Path | None = None
+        self._token_file = self._resolve_token_file()
+
+    def _resolve_token_file(self) -> Path:
+        if self._config.token_file is not None:
+            token_file = self._config.token_file.resolve()
+            if not token_file.is_file():
+                raise RuntimeError(f"GitHub token file is missing: {token_file}")
+            return token_file
+        descriptor, path_value = tempfile.mkstemp(prefix="gh-backup-token-")
+        token_file = Path(path_value)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(self._config.token)
+            handle.flush()
+            os.fsync(handle.fileno())
+        token_file.chmod(0o600)
+        self._owned_token_file = token_file
+        atexit.register(self.cleanup)
+        return token_file
+
+    def cleanup(self) -> None:
+        if self._owned_token_file is not None:
+            self._owned_token_file.unlink(missing_ok=True)
+            self._owned_token_file = None
+        if self._owned_git_config is not None:
+            self._owned_git_config.unlink(missing_ok=True)
+            self._owned_git_config = None
 
     def configure_authentication(self) -> None:
-        os.environ["GHORG_GITHUB_TOKEN"] = self._config.token
+        descriptor, path_value = tempfile.mkstemp(prefix="gh-backup-gitconfig-")
+        os.close(descriptor)
+        self._owned_git_config = Path(path_value)
+        self._owned_git_config.chmod(0o600)
+        os.environ["GITHUB_TOKEN_FILE"] = str(self._token_file)
+        os.environ["GIT_CONFIG_GLOBAL"] = str(self._owned_git_config)
+        config_args = ["git", "config", "--file", str(self._owned_git_config)]
         self._run_command(
             [
-                "git",
-                "config",
-                "--global",
+                *config_args,
                 "url.https://github.com/.insteadOf",
                 "git@github.com:",
             ],
@@ -38,13 +72,11 @@ class CommandBackupAdapter:
         )
         self._run_command(
             [
-                "git",
-                "config",
-                "--global",
+                *config_args,
                 "credential.https://github.com/.helper",
                 (
                     "!f() { echo username=x-access-token; "
-                    "echo password=$GHORG_GITHUB_TOKEN; }; f"
+                    "echo password=$(cat \"$GITHUB_TOKEN_FILE\"); }; f"
                 ),
             ],
             check=True,
@@ -59,7 +91,7 @@ class CommandBackupAdapter:
             target,
             "--scm=github",
             f"--clone-type={clone_type}",
-            f"--token={self._config.token}",
+            f"--token={self._token_file}",
             f"--path={self._config.data_dir / 'mirrors'}",
             f"--output-dir={target}_backup",
             "--backup",
@@ -77,7 +109,7 @@ class CommandBackupAdapter:
         args = [
             "github-backup",
             "--token",
-            self._config.token,
+            self._token_file.as_uri(),
             "--output-directory",
             str(metadata_dir),
             *self._coverage.metadata_arguments(target_kind),

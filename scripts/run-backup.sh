@@ -40,8 +40,13 @@ PY
 : "${GITHUB_OWNER:=}"
 : "${GITHUB_ORGS:=}"
 : "${GITHUB_TOKEN:=}"
+: "${GITHUB_TOKEN_FILE:=}"
 : "${BACKUP_DATA_DIR:=/data}"
 
+if [[ -n "${GITHUB_TOKEN_FILE}" ]]; then
+  [[ -r "${GITHUB_TOKEN_FILE}" ]] || die "GitHub token file is not readable: ${GITHUB_TOKEN_FILE}"
+  GITHUB_TOKEN="$(tr -d '\r\n' < "${GITHUB_TOKEN_FILE}")"
+fi
 GITHUB_TOKEN="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
 [[ -n "${GITHUB_TOKEN}" ]] || die "GitHub token value is empty"
 
@@ -68,9 +73,17 @@ if [[ -n "${configured_owner}" && "${configured_owner}" != "${authenticated_logi
   log "Normalizing GITHUB_OWNER from ${configured_owner} to ${authenticated_login}"
 fi
 GITHUB_OWNER="${authenticated_login}"
-export GITHUB_OWNER GITHUB_ORGS GITHUB_TOKEN BACKUP_DATA_DIR GHORG_INCLUDE_SUBMODULES
+
+if [[ -z "${GITHUB_TOKEN_FILE}" ]]; then
+  GITHUB_TOKEN_FILE="$(mktemp)"
+  chmod 600 "${GITHUB_TOKEN_FILE}"
+  printf '%s' "${GITHUB_TOKEN}" > "${GITHUB_TOKEN_FILE}"
+  export GH_BACKUP_EPHEMERAL_TOKEN_FILE=true
+fi
+export GITHUB_OWNER GITHUB_ORGS GITHUB_TOKEN_FILE BACKUP_DATA_DIR GHORG_INCLUDE_SUBMODULES
 export GH_BACKUP_RUN_ID="${run_id}"
 export GH_BACKUP_LOG_FILE="${run_log}"
+unset GITHUB_TOKEN
 
 runner_python="${GH_BACKUP_RUNNER_PYTHON:-/opt/venv/bin/python3}"
 exec "${runner_python}" -m gh_backup.runner

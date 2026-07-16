@@ -87,6 +87,10 @@ RUN apt-get update \
 
 RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state
 
+RUN groupadd --gid 10001 gh-backup \
+    && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/gh-backup --shell /usr/sbin/nologin gh-backup \
+    && chown -R gh-backup:gh-backup /app /data
+
 COPY --link --from=python-builder /opt/venv /opt/venv
 COPY --link --from=binary-fetcher /usr/local/bin/ghorg /usr/local/bin/supercronic /usr/local/bin/
 COPY --link gh_backup /opt/gh-backup/gh_backup
@@ -94,6 +98,8 @@ COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/val
 
 WORKDIR /app
 VOLUME ["/data"]
+
+USER gh-backup
 
 HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=2 \
     CMD ["python3", "-m", "gh_backup.health", "health"]

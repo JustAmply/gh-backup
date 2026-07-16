@@ -57,6 +57,22 @@ class BackupRunnerTests(unittest.TestCase):
         self.assertEqual(config.data_dir, Path("/archive"))
         self.assertTrue(config.include_submodules)
 
+    def test_environment_config_reads_a_token_file_without_token_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            token_file = Path(temp_dir) / "github-token"
+            token_file.write_text("file-secret\n", encoding="utf-8")
+
+            config = BackupConfig.from_environment(
+                {
+                    "GITHUB_OWNER": "OctoCat",
+                    "GITHUB_TOKEN_FILE": str(token_file),
+                    "BACKUP_DATA_DIR": temp_dir,
+                }
+            )
+
+            self.assertEqual(config.token, "file-secret")
+            self.assertEqual(config.token_file, token_file)
+
     def test_successful_run_executes_every_stage_and_publishes_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)

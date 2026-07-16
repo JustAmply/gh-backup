@@ -308,8 +308,12 @@ main() {
   reset_logs
   write_stubs
   run_backup_expect_success "${TMP_DIR}/success-output.log"
-  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone octocat --scm=github --clone-type=user --token=ghp_testtoken --path=${TEST_DATA_DIR}/mirrors --output-dir=octocat_backup --backup --clone-wiki --github-user-option=owner --include-submodules"
-  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org --token=ghp_testtoken --path=${TEST_DATA_DIR}/mirrors --output-dir=my-org_backup --backup --clone-wiki --include-submodules"
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone octocat --scm=github --clone-type=user --token="
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "--path=${TEST_DATA_DIR}/mirrors --output-dir=octocat_backup --backup --clone-wiki --github-user-option=owner --include-submodules"
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org --token="
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "--path=${TEST_DATA_DIR}/mirrors --output-dir=my-org_backup --backup --clone-wiki --include-submodules"
+  assert_not_contains "${TEST_LOG_DIR}/ghorg.log" "ghp_testtoken"
+  assert_not_contains "${TEST_LOG_DIR}/github-backup.log" "ghp_testtoken"
   assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/public-repo lfs fetch --all"
   assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/octocat_backup/private-repo lfs fetch --all"
   assert_contains "${TEST_LOG_DIR}/git.log" "-C ${TEST_DATA_DIR}/mirrors/my-org_backup/org-seed lfs fetch --all"
@@ -323,7 +327,8 @@ main() {
   write_stubs
   run_backup_expect_success "${TMP_DIR}/normalized-owner.log" "success" "" "octocat" "OctoCat"
   assert_contains "${TMP_DIR}/normalized-owner.log" "Normalizing GITHUB_OWNER from octocat to OctoCat"
-  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone OctoCat --scm=github --clone-type=user --token=ghp_testtoken --path=${TEST_DATA_DIR}/mirrors --output-dir=OctoCat_backup --backup --clone-wiki --github-user-option=owner --include-submodules"
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone OctoCat --scm=github --clone-type=user --token="
+  assert_contains "${TEST_LOG_DIR}/ghorg.log" "--path=${TEST_DATA_DIR}/mirrors --output-dir=OctoCat_backup --backup --clone-wiki --github-user-option=owner --include-submodules"
   assert_contains "${TEST_LOG_DIR}/github-backup.log" "--output-directory ${TEST_DATA_DIR}/metadata/OctoCat"
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"owner\": \"OctoCat\""
 

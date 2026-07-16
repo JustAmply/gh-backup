@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 import unittest
@@ -34,12 +35,29 @@ class CommandBackupAdapterTests(unittest.TestCase):
             adapter.configure_authentication()
 
             self.assertEqual(commands.calls[0][:2], ["git", "config"])
+            self.assertIn("--file", commands.calls[0])
+            self.assertNotIn("--global", commands.calls[0])
             self.assertIn("url.https://github.com/.insteadOf", commands.calls[0])
             self.assertEqual(commands.calls[1][:2], ["git", "config"])
+            self.assertIn("--file", commands.calls[1])
+            self.assertNotIn("--global", commands.calls[1])
             self.assertIn("credential.https://github.com/.helper", commands.calls[1])
+            self.assertIn("GITHUB_TOKEN_FILE", commands.calls[1][-1])
+            self.assertNotIn("secret-token", " ".join(sum(commands.calls, [])))
+            token_file = Path(os.environ["GITHUB_TOKEN_FILE"])
+            git_config = Path(os.environ["GIT_CONFIG_GLOBAL"])
+            self.assertTrue(token_file.is_file())
+            self.assertTrue(git_config.is_file())
+
+            adapter.cleanup()
+
+            self.assertFalse(token_file.exists())
+            self.assertFalse(git_config.exists())
 
     def test_user_mirror_command_contains_the_required_backup_options(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
+            token_file = Path(temp_dir) / "github-token"
+            token_file.write_text("secret-token", encoding="utf-8")
             commands = RecordingCommandRunner()
             adapter = CommandBackupAdapter(
                 BackupConfig(
@@ -48,6 +66,7 @@ class CommandBackupAdapterTests(unittest.TestCase):
                     token="secret-token",
                     data_dir=Path(temp_dir),
                     include_submodules=True,
+                    token_file=token_file,
                 ),
                 run_command=commands,
             )
@@ -63,7 +82,7 @@ class CommandBackupAdapterTests(unittest.TestCase):
                         "OctoCat",
                         "--scm=github",
                         "--clone-type=user",
-                        "--token=secret-token",
+                        f"--token={token_file}",
                         f"--path={Path(temp_dir) / 'mirrors'}",
                         "--output-dir=OctoCat_backup",
                         "--backup",
@@ -73,6 +92,7 @@ class CommandBackupAdapterTests(unittest.TestCase):
                     ]
                 ],
             )
+            self.assertNotIn("secret-token", " ".join(commands.calls[0]))
 
     def test_organization_metadata_command_uses_the_archival_resource_set(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -98,6 +118,9 @@ class CommandBackupAdapterTests(unittest.TestCase):
             self.assertIn("--pull-details", commands.calls[0])
             self.assertIn("--assets", commands.calls[0])
             self.assertIn("--attachments", commands.calls[0])
+            token_argument = commands.calls[0][commands.calls[0].index("--token") + 1]
+            self.assertTrue(token_argument.startswith("file://"))
+            self.assertNotIn("secret-token", " ".join(commands.calls[0]))
             self.assertEqual(
                 commands.calls[0][
                     commands.calls[0].index("--output-directory") + 1

@@ -50,6 +50,22 @@ Set at least these values:
 GITHUB_TOKEN=your-token-here
 ```
 
+For file-based secret injection, mount a token file read-only and set
+`GITHUB_TOKEN_FILE` to its path inside the container. When both inputs are set,
+the file takes precedence:
+
+```yaml
+services:
+  gh-backup:
+    environment:
+      GITHUB_TOKEN_FILE: /run/secrets/github-token
+    volumes:
+      - ./secrets/github-token:/run/secrets/github-token:ro
+```
+
+The local `secrets/` directory is ignored by Git and excluded from the Docker
+build context.
+
 Optional:
 
 - `GITHUB_OWNER` if you want an explicit sanity check that the token belongs to that user
@@ -139,6 +155,7 @@ The container reads these environment variables from `.env`:
 - `GITHUB_OWNER`: optional sanity-check username for the personal account behind `GITHUB_TOKEN`
 - `GITHUB_ORGS`: optional comma-separated organizations to back up in addition to the owner account
 - `GITHUB_TOKEN`: your GitHub PAT, required
+- `GITHUB_TOKEN_FILE`: preferred read-only token file path; replaces `GITHUB_TOKEN` when set
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`
 - `BACKUP_DATA_DIR`: backup root inside the container, default `/data`
 - `TZ`: timezone, default `Europe/Berlin`
@@ -217,3 +234,6 @@ The precise recovery promises, limitations, and objectives are documented in
 defined in [`CONTEXT.md`](CONTEXT.md), and architectural decisions are recorded
 under [`docs/adr/`](docs/adr/). The versioned resource and restoration matrix is
 in [`docs/coverage.md`](docs/coverage.md).
+
+Token handling and container privileges are documented in
+[`docs/security.md`](docs/security.md).

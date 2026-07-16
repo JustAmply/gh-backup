@@ -25,7 +25,17 @@ def _number(
 
 def validate_environment(environment: Mapping[str, str]) -> list[str]:
     errors: list[str] = []
-    if not environment.get("GITHUB_TOKEN", "").strip("\r\n"):
+    token_file_value = environment.get("GITHUB_TOKEN_FILE", "").strip()
+    token_file = Path(token_file_value) if token_file_value else None
+    token_present = bool(environment.get("GITHUB_TOKEN", "").strip("\r\n"))
+    if token_file is not None:
+        try:
+            token_present = bool(
+                token_file.read_text(encoding="utf-8").strip("\r\n")
+            )
+        except OSError as exc:
+            errors.append(f"GitHub token file is not readable: {token_file} ({exc})")
+    if not token_present:
         errors.append("GitHub token value is empty")
 
     for name, default in (
