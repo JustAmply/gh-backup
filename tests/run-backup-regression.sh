@@ -245,6 +245,10 @@ run_validate_expect_success() {
 
   env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
+    GH_BACKUP_RUNNER_PYTHON="python" \
+    PYTHONPATH="${ROOT_DIR}" \
+    BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
+    BACKUP_MIN_FREE_GB="0" \
     GITHUB_OWNER="${owner}" \
     GITHUB_TOKEN="ghp_testtoken" \
     bash "${ROOT_DIR}/scripts/validate.sh" >"${output_file}" 2>&1 || fail "Expected validate scenario to pass"
@@ -257,6 +261,10 @@ run_validate_expect_failure() {
 
   if env \
     PATH="${TEST_BIN_DIR}:${PATH}" \
+    GH_BACKUP_RUNNER_PYTHON="python" \
+    PYTHONPATH="${ROOT_DIR}" \
+    BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
+    BACKUP_MIN_FREE_GB="0" \
     GITHUB_OWNER="${owner}" \
     GITHUB_TOKEN="${token}" \
     bash "${ROOT_DIR}/scripts/validate.sh" >"${output_file}" 2>&1; then

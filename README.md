@@ -143,6 +143,8 @@ The container reads these environment variables from `.env`:
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
 - `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
+- `BACKUP_MAX_AGE_HOURS`: maximum healthy recovery-point age, default `26`
+- `BACKUP_MIN_FREE_GB`: minimum free backup storage checked by `validate`, default `1`
 
 Example:
 
@@ -154,6 +156,23 @@ BACKUP_CRON=17 2 * * *
 TZ=Europe/Berlin
 RUN_ON_STARTUP=true
 GHORG_INCLUDE_SUBMODULES=true
+BACKUP_MAX_AGE_HOURS=26
+BACKUP_MIN_FREE_GB=1
+```
+
+Inspect the latest attempt and recovery point without changing backup data:
+
+```bash
+docker compose run --rm gh-backup status
+docker compose run --rm gh-backup status --json
+```
+
+The `health` command returns a non-zero exit code when the latest run failed,
+no verified recovery point exists, or the latest recovery point is older than
+`BACKUP_MAX_AGE_HOURS`. The image uses the same command for Docker health:
+
+```bash
+docker compose run --rm gh-backup health
 ```
 
 ## Where the Backup Is Stored

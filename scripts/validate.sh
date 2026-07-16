@@ -31,4 +31,7 @@ ${BACKUP_CRON} /usr/local/bin/run-backup.sh
 EOF
 
 supercronic -test "${tmp_cron}" >/dev/null
+
+runner_python="${GH_BACKUP_RUNNER_PYTHON:-/opt/venv/bin/python3}"
+"${runner_python}" -m gh_backup.preflight
 log "Validation succeeded"

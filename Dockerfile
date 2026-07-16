@@ -95,5 +95,8 @@ COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/val
 WORKDIR /app
 VOLUME ["/data"]
 
+HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=2 \
+    CMD ["python3", "-m", "gh_backup.health", "health"]
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["scheduler"]
