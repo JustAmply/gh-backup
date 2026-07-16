@@ -11,50 +11,17 @@ ENV PIP_NO_CACHE_DIR=1
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-compile "github-backup==${GITHUB_BACKUP_VERSION}"
 
-FROM golang:1.26.5-bookworm AS supercronic-builder
+FROM golang:1.26.5-bookworm AS go-tools-builder
 
+ARG GHORG_VERSION=v1.11.13
 ARG SUPERCRONIC_VERSION=v0.2.47
 
 ENV CGO_ENABLED=0
 ENV GOTOOLCHAIN=local
 
-RUN go install -ldflags "-X main.Version=${SUPERCRONIC_VERSION}" \
+RUN go install "github.com/gabrie30/ghorg@${GHORG_VERSION}" \
+    && go install -ldflags "-X main.Version=${SUPERCRONIC_VERSION}" \
     "github.com/aptible/supercronic@${SUPERCRONIC_VERSION}"
-
-FROM debian:trixie-slim AS binary-fetcher
-
-ARG TARGETARCH
-ARG GHORG_VERSION=v1.11.13
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends \
-        ca-certificates \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN case "${TARGETARCH}" in \
-        amd64) \
-            ghorg_archive="ghorg_${GHORG_VERSION#v}_Linux_x86_64.tar.gz" \
-            && ghorg_sha256="8d581ac1fd16392265abea4f3494a1a52fc561c6227ad935593deb052d647302" \
-            ;; \
-        arm64) \
-            ghorg_archive="ghorg_${GHORG_VERSION#v}_Linux_arm64.tar.gz" \
-            && ghorg_sha256="ef5229b8a8c39de8f8008f80212e10029cf858aaa4920b793b457963a409c242" \
-            ;; \
-        *) \
-            echo "Unsupported TARGETARCH for ghorg: ${TARGETARCH}" >&2 \
-            && exit 1 \
-            ;; \
-    esac \
-    && curl -fsSLO "https://github.com/gabrie30/ghorg/releases/download/${GHORG_VERSION}/${ghorg_archive}" \
-    && echo "${ghorg_sha256}  ${ghorg_archive}" | sha256sum -c - \
-    && tar -xzf "${ghorg_archive}" ghorg \
-    && install -m 0755 ghorg /usr/local/bin/ghorg \
-    && rm -f ghorg "${ghorg_archive}"
 
 FROM python:3.14-slim
 
@@ -84,8 +51,7 @@ RUN groupadd --gid 10001 gh-backup \
     && chown -R gh-backup:gh-backup /app /data
 
 COPY --link --from=python-builder /opt/venv /opt/venv
-COPY --link --from=binary-fetcher /usr/local/bin/ghorg /usr/local/bin/ghorg
-COPY --link --from=supercronic-builder /go/bin/supercronic /usr/local/bin/supercronic
+COPY --link --from=go-tools-builder /go/bin/ghorg /go/bin/supercronic /usr/local/bin/
 COPY --link gh_backup /opt/gh-backup/gh_backup
 COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/validate.sh /usr/local/bin/
 
