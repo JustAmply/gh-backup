@@ -38,6 +38,31 @@ def validate_environment(environment: Mapping[str, str]) -> list[str]:
     if not token_present:
         errors.append("GitHub token value is empty")
 
+    if environment.get("RESTIC_REPOSITORY", "").strip():
+        password_file = Path(environment.get("RESTIC_PASSWORD_FILE", ""))
+        try:
+            password_present = bool(
+                password_file.read_text(encoding="utf-8").strip("\r\n")
+            )
+        except OSError as exc:
+            password_present = False
+            errors.append(f"RESTIC_PASSWORD_FILE is not readable: {exc}")
+        if not password_present and password_file.is_file():
+            errors.append("RESTIC_PASSWORD_FILE is empty")
+
+        for name, default in (
+            ("BACKUP_RETENTION_DAILY", "7"),
+            ("BACKUP_RETENTION_WEEKLY", "5"),
+            ("BACKUP_RETENTION_MONTHLY", "12"),
+        ):
+            try:
+                value = int(environment.get(name, default))
+            except ValueError:
+                errors.append(f"{name} must be an integer")
+                continue
+            if value <= 0:
+                errors.append(f"{name} must be greater than zero")
+
     for name, default in (
         ("RUN_ON_STARTUP", "true"),
         ("GHORG_INCLUDE_SUBMODULES", "true"),

@@ -81,6 +81,7 @@ RUN apt-get update \
         ca-certificates \
         git \
         git-lfs \
+        restic \
         tzdata \
         util-linux \
     && rm -rf /var/lib/apt/lists/*

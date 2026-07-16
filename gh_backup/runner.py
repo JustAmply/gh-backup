@@ -75,6 +75,10 @@ class BackupAdapter(Protocol):
     def verify_backup(self, target: str) -> str | None: ...
 
 
+class OffsiteAdapter(Protocol):
+    def archive(self, *, run_id: str, data_dir: Path) -> str: ...
+
+
 class BackupRunner:
     """Execute the required stages and publish their recovery evidence."""
 
@@ -83,12 +87,14 @@ class BackupRunner:
         *,
         config: BackupConfig,
         adapter: BackupAdapter,
+        offsite_adapter: OffsiteAdapter | None = None,
         run_id: str,
         log_file: str,
         clock: Callable[[], datetime],
     ) -> None:
         self._config = config
         self._adapter = adapter
+        self._offsite_adapter = offsite_adapter
         self._run_id = run_id
         self._log_file = log_file
         self._clock = clock
@@ -149,6 +155,32 @@ class BackupRunner:
                 )
                 all_targets_succeeded &= target_succeeded
 
+        if all_targets_succeeded and self._offsite_adapter is not None:
+            started_at = self._clock()
+            try:
+                detail = self._offsite_adapter.archive(
+                    run_id=self._run_id, data_dir=self._config.data_dir
+                )
+            except Exception as exc:
+                detail = str(exc).replace(self._config.token, "***")
+                LOGGER.error("offsite archive failed: %s", detail)
+                manifest.record_run_stage(
+                    stage="offsite",
+                    status="failed",
+                    started_at=started_at,
+                    finished_at=self._clock(),
+                    detail=detail,
+                )
+                all_targets_succeeded = False
+            else:
+                manifest.record_run_stage(
+                    stage="offsite",
+                    status="succeeded",
+                    started_at=started_at,
+                    finished_at=self._clock(),
+                    detail=detail,
+                )
+
         terminal_status = "verified" if all_targets_succeeded else "failed"
         manifest.finish(status=terminal_status, finished_at=self._clock())
         return 0 if all_targets_succeeded else 1
@@ -200,6 +232,7 @@ class BackupRunner:
 
 def main() -> int:
     from gh_backup.command_adapter import CommandBackupAdapter
+    from gh_backup.offsite import offsite_adapter_from_environment
 
     logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s")
     config = BackupConfig.from_environment(os.environ)
@@ -212,10 +245,12 @@ def main() -> int:
         "GH_BACKUP_LOG_FILE", str(config.data_dir / "logs" / f"{run_id}.log")
     )
     adapter = CommandBackupAdapter(config)
+    offsite_adapter = offsite_adapter_from_environment(os.environ)
     try:
         return BackupRunner(
             config=config,
             adapter=adapter,
+            offsite_adapter=offsite_adapter,
             run_id=run_id,
             log_file=log_file,
             clock=lambda: datetime.now().astimezone(),

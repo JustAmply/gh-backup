@@ -39,6 +39,21 @@ class FailingAuthenticationAdapter(RecordingBackupAdapter):
         raise RuntimeError("authentication rejected secret-token")
 
 
+class RecordingOffsiteAdapter:
+    def __init__(self) -> None:
+        self.run_ids: list[str] = []
+
+    def archive(self, *, run_id: str, data_dir: Path) -> str:
+        self.run_ids.append(run_id)
+        return "offsite verified"
+
+
+class FailingOffsiteAdapter:
+    def archive(self, *, run_id: str, data_dir: Path) -> str:
+        del run_id, data_dir
+        raise RuntimeError("offsite unavailable")
+
+
 class BackupRunnerTests(unittest.TestCase):
     def test_environment_config_normalizes_targets_and_boolean_values(self) -> None:
         config = BackupConfig.from_environment(
@@ -150,6 +165,73 @@ class BackupRunnerTests(unittest.TestCase):
                 manifest["errors"], ["authentication rejected ***"]
             )
             self.assertNotIn("secret-token", json.dumps(manifest))
+
+    def test_successful_local_verification_is_archived_before_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            offsite = RecordingOffsiteAdapter()
+            runner = BackupRunner(
+                config=BackupConfig(
+                    owner="OctoCat",
+                    orgs=(),
+                    token="secret-token",
+                    data_dir=data_dir,
+                    include_submodules=True,
+                ),
+                adapter=RecordingBackupAdapter(),
+                offsite_adapter=offsite,
+                run_id="offsite-run",
+                log_file=str(data_dir / "logs" / "offsite.log"),
+                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+            )
+
+            result = runner.run()
+
+            manifest = json.loads(
+                (data_dir / "state" / "last-success.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(result, 0)
+            self.assertEqual(offsite.run_ids, ["offsite-run"])
+            self.assertEqual(
+                manifest["run_stages"]["offsite"],
+                {
+                    "status": "succeeded",
+                    "started_at": "2026-07-16T12:00:00Z",
+                    "finished_at": "2026-07-16T12:00:00Z",
+                    "detail": "offsite verified",
+                },
+            )
+
+    def test_offsite_failure_prevents_recovery_point_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            runner = BackupRunner(
+                config=BackupConfig(
+                    owner="OctoCat",
+                    orgs=(),
+                    token="secret-token",
+                    data_dir=data_dir,
+                    include_submodules=True,
+                ),
+                adapter=RecordingBackupAdapter(),
+                offsite_adapter=FailingOffsiteAdapter(),
+                run_id="offsite-failed-run",
+                log_file=str(data_dir / "logs" / "offsite-failed.log"),
+                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+            )
+
+            with self.assertLogs("gh_backup.runner", level="ERROR"):
+                result = runner.run()
+
+            manifest = json.loads(
+                (data_dir / "state" / "last-run.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(result, 1)
+            self.assertEqual(manifest["status"], "failed")
+            self.assertEqual(manifest["run_stages"]["offsite"]["status"], "failed")
+            self.assertFalse((data_dir / "state" / "last-success.json").exists())
 
     def test_failed_stage_is_recorded_and_later_stages_are_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

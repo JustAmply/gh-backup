@@ -62,10 +62,10 @@ The latest attempt and the latest recovery point are tracked separately.
 
 ## Storage Scope
 
-The initial implementation stores working data in the configured Docker volume.
-That volume is one local copy, not an offsite guarantee. Offsite protection only
-becomes part of this contract after an encrypted storage adapter and restore
-drill have been implemented and enabled.
+Working data is stored in the configured Docker volume. That volume alone is one
+local copy, not an offsite guarantee. When `RESTIC_REPOSITORY` and a password
+file are configured, encrypted Restic snapshot creation, repository checking,
+and retention become required stages for publishing a verified recovery point.
 
 ## Operator Responsibilities
 

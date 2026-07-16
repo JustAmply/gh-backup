@@ -163,6 +163,11 @@ The container reads these environment variables from `.env`:
 - `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
 - `BACKUP_MAX_AGE_HOURS`: maximum healthy recovery-point age, default `26`
 - `BACKUP_MIN_FREE_GB`: minimum free backup storage checked by `validate`, default `1`
+- `RESTIC_REPOSITORY`: optional encrypted offsite repository; empty disables offsite snapshots
+- `RESTIC_PASSWORD_FILE`: required password file when `RESTIC_REPOSITORY` is set
+- `BACKUP_RETENTION_DAILY`: offsite daily snapshots retained, default `7`
+- `BACKUP_RETENTION_WEEKLY`: offsite weekly snapshots retained, default `5`
+- `BACKUP_RETENTION_MONTHLY`: offsite monthly snapshots retained, default `12`
 
 Example:
 
@@ -176,6 +181,11 @@ RUN_ON_STARTUP=true
 GHORG_INCLUDE_SUBMODULES=true
 BACKUP_MAX_AGE_HOURS=26
 BACKUP_MIN_FREE_GB=1
+RESTIC_REPOSITORY=
+RESTIC_PASSWORD_FILE=
+BACKUP_RETENTION_DAILY=7
+BACKUP_RETENTION_WEEKLY=5
+BACKUP_RETENTION_MONTHLY=12
 ```
 
 Inspect the latest attempt and recovery point without changing backup data:
@@ -237,3 +247,5 @@ in [`docs/coverage.md`](docs/coverage.md).
 
 Token handling and container privileges are documented in
 [`docs/security.md`](docs/security.md).
+Operational monitoring, encrypted offsite snapshots, retention, and recovery
+commands are documented in [`docs/operations.md`](docs/operations.md).

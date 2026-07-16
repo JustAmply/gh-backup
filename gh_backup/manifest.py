@@ -55,6 +55,7 @@ class RunManifest:
                 "finished_at": None,
                 "log_file": log_file,
                 "errors": [],
+                "run_stages": {},
                 "targets": {},
             },
         )
@@ -81,6 +82,26 @@ class RunManifest:
     def record_error(self, detail: str) -> None:
         self._ensure_running()
         self.document["errors"].append(detail)
+        self._persist()
+
+    def record_run_stage(
+        self,
+        *,
+        stage: str,
+        status: str,
+        started_at: datetime,
+        finished_at: datetime,
+        detail: str | None = None,
+    ) -> None:
+        self._ensure_running()
+        stage_document = {
+            "status": status,
+            "started_at": _format_timestamp(started_at),
+            "finished_at": _format_timestamp(finished_at),
+        }
+        if detail is not None:
+            stage_document["detail"] = detail
+        self.document["run_stages"][stage] = stage_document
         self._persist()
 
     def record_stage(

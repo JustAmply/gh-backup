@@ -15,7 +15,7 @@ die() {
 : "${GITHUB_TOKEN_FILE:=}"
 : "${BACKUP_CRON:=17 2 * * *}"
 
-for cmd in ghorg github-backup git git-lfs supercronic flock bash python3; do
+for cmd in ghorg github-backup git git-lfs restic supercronic flock bash python3; do
   command -v "${cmd}" >/dev/null 2>&1 || die "Required command missing: ${cmd}"
 done
 

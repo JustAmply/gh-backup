@@ -174,6 +174,20 @@ set -Eeuo pipefail
 exit 0
 EOF
 
+  cat > "${TEST_BIN_DIR}/restic" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+normalized_args=()
+for arg in "$@"; do
+  if [[ "${arg}" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
+    normalized_args+=("$(cygpath -u "${arg}")")
+  else
+    normalized_args+=("${arg}")
+  fi
+done
+printf '%s\n' "${normalized_args[*]}" >> "${TEST_LOG_DIR}/restic.log"
+EOF
+
   cat > "${TEST_BIN_DIR}/flock" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -206,6 +220,7 @@ EOF
     "${TEST_BIN_DIR}/ghorg" \
     "${TEST_BIN_DIR}/github-backup" \
     "${TEST_BIN_DIR}/git-lfs" \
+    "${TEST_BIN_DIR}/restic" \
     "${TEST_BIN_DIR}/flock" \
     "${TEST_BIN_DIR}/supercronic" \
     "${TEST_BIN_DIR}/python3"
@@ -232,6 +247,8 @@ run_backup() {
     GITHUB_TOKEN="ghp_testtoken" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
     GHORG_INCLUDE_SUBMODULES="true" \
+    RESTIC_REPOSITORY="${TEST_RESTIC_REPOSITORY:-}" \
+    RESTIC_PASSWORD_FILE="${TEST_RESTIC_PASSWORD_FILE:-}" \
     bash "${ROOT_DIR}/scripts/run-backup.sh" >"${output_file}" 2>&1
 }
 
@@ -322,6 +339,17 @@ main() {
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"owner\": \"octocat\""
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"orgs\": ["
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"my-org\""
+
+  reset_logs
+  write_stubs
+  printf '%s' "restic-test-password" > "${TMP_DIR}/restic-password"
+  TEST_RESTIC_REPOSITORY="${TMP_DIR}/restic-repository" \
+    TEST_RESTIC_PASSWORD_FILE="${TMP_DIR}/restic-password" \
+    run_backup_expect_success "${TMP_DIR}/offsite-output.log" "success" ""
+  assert_contains "${TEST_LOG_DIR}/restic.log" "backup ${TEST_DATA_DIR} --tag gh-backup --tag run:"
+  assert_contains "${TEST_LOG_DIR}/restic.log" "check"
+  assert_contains "${TEST_LOG_DIR}/restic.log" "forget --tag gh-backup --keep-daily 7 --keep-weekly 5 --keep-monthly 12 --prune"
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"offsite\""
 
   reset_logs
   write_stubs
