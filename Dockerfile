@@ -11,11 +11,20 @@ ENV PIP_NO_CACHE_DIR=1
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-compile "github-backup==${GITHUB_BACKUP_VERSION}"
 
+FROM golang:1.26.5-bookworm AS supercronic-builder
+
+ARG SUPERCRONIC_VERSION=v0.2.47
+
+ENV CGO_ENABLED=0
+ENV GOTOOLCHAIN=local
+
+RUN go install -ldflags "-X main.Version=${SUPERCRONIC_VERSION}" \
+    "github.com/aptible/supercronic@${SUPERCRONIC_VERSION}"
+
 FROM debian:trixie-slim AS binary-fetcher
 
 ARG TARGETARCH
 ARG GHORG_VERSION=v1.11.13
-ARG SUPERCRONIC_VERSION=v0.2.47
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -47,24 +56,6 @@ RUN case "${TARGETARCH}" in \
     && install -m 0755 ghorg /usr/local/bin/ghorg \
     && rm -f ghorg "${ghorg_archive}"
 
-RUN case "${TARGETARCH}" in \
-        amd64) \
-            supercronic_bin="supercronic-linux-amd64" \
-            && supercronic_sha256="dcb1403c188a9438c47d4bba82a9c357fc9351ce91627fb2bae627f0f5becfc4" \
-            ;; \
-        arm64) \
-            supercronic_bin="supercronic-linux-arm64" \
-            && supercronic_sha256="e1124aa34294e2bb8ab7002f347f4363ba35097f3daf4d3c44e9d813c1fb2bb8" \
-            ;; \
-        *) \
-            echo "Unsupported TARGETARCH for supercronic: ${TARGETARCH}" >&2 \
-            && exit 1 \
-            ;; \
-    esac \
-    && curl -fsSL "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/${supercronic_bin}" -o /usr/local/bin/supercronic \
-    && echo "${supercronic_sha256}  /usr/local/bin/supercronic" | sha256sum -c - \
-    && chmod +x /usr/local/bin/supercronic
-
 FROM python:3.14-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -93,7 +84,8 @@ RUN groupadd --gid 10001 gh-backup \
     && chown -R gh-backup:gh-backup /app /data
 
 COPY --link --from=python-builder /opt/venv /opt/venv
-COPY --link --from=binary-fetcher /usr/local/bin/ghorg /usr/local/bin/supercronic /usr/local/bin/
+COPY --link --from=binary-fetcher /usr/local/bin/ghorg /usr/local/bin/ghorg
+COPY --link --from=supercronic-builder /go/bin/supercronic /usr/local/bin/supercronic
 COPY --link gh_backup /opt/gh-backup/gh_backup
 COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/validate.sh /usr/local/bin/
 
