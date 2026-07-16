@@ -52,7 +52,7 @@ GITHUB_TOKEN="$(printf '%s' "${GITHUB_TOKEN}" | tr -d '\r\n')"
 
 mkdir -p "${BACKUP_DATA_DIR}/logs" "${BACKUP_DATA_DIR}/metadata" "${BACKUP_DATA_DIR}/mirrors" "${BACKUP_DATA_DIR}/state"
 
-run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-$(python3 -c 'import secrets; print(secrets.token_hex(4))')"
 run_log="${BACKUP_DATA_DIR}/logs/${run_id}.log"
 touch "${run_log}"
 exec > >(tee -a "${run_log}") 2>&1

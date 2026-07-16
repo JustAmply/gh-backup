@@ -47,6 +47,11 @@ if [[ "${args[0]:-}" == "-C" ]] && command -v cygpath >/dev/null 2>&1; then
 fi
 printf '%s\n' "$*" >> "${TEST_LOG_DIR}/git.log"
 
+if [[ "$1" == "--version" ]]; then
+  printf '%s\n' "git version 2.47.3"
+  exit 0
+fi
+
 if [[ "$1" == "config" ]]; then
   exit 0
 fi
@@ -88,6 +93,11 @@ EOF
   cat > "${TEST_BIN_DIR}/ghorg" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ "${1:-}" == "version" ]]; then
+  printf '%s\n' "ghorg version 1.11.10"
+  exit 0
+fi
 
 normalized_args=()
 for arg in "$@"; do
@@ -158,25 +168,41 @@ if [[ "${1:-}" == "--help" ]]; then
   exit 0
 fi
 normalized_args=()
+output_dir=""
 for arg in "$@"; do
   if [[ "${arg}" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
-    normalized_args+=("$(cygpath -u "${arg}")")
+    normalized_arg="$(cygpath -u "${arg}")"
   else
-    normalized_args+=("${arg}")
+    normalized_arg="${arg}"
+  fi
+  normalized_args+=("${normalized_arg}")
+done
+for ((index = 0; index < ${#normalized_args[@]}; index++)); do
+  if [[ "${normalized_args[index]}" == "--output-directory" ]]; then
+    output_dir="${normalized_args[index + 1]}"
   fi
 done
 printf '%s\n' "${normalized_args[*]}" >> "${TEST_LOG_DIR}/github-backup.log"
+mkdir -p "${output_dir}"
+printf '%s\n' '{}' > "${output_dir}/account.json"
 EOF
 
   cat > "${TEST_BIN_DIR}/git-lfs" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" == "version" ]]; then
+  printf '%s\n' "git-lfs/3.6.1"
+fi
 exit 0
 EOF
 
   cat > "${TEST_BIN_DIR}/restic" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" == "version" ]]; then
+  printf '%s\n' "restic 0.18.0"
+  exit 0
+fi
 normalized_args=()
 for arg in "$@"; do
   if [[ "${arg}" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
@@ -207,6 +233,10 @@ EOF
   cat > "${TEST_BIN_DIR}/python3" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" == "-c" && "${2:-}" == *"secrets.token_hex"* ]]; then
+  printf '%s' "a1b2c3d4"
+  exit 0
+fi
 if [[ "${1:-}" != "-" ]]; then
   printf 'unexpected python3 args: %s\n' "$*" >&2
   exit 1
@@ -325,6 +355,7 @@ main() {
   reset_logs
   write_stubs
   run_backup_expect_success "${TMP_DIR}/success-output.log"
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "-a1b2c3d4"
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone octocat --scm=github --clone-type=user --token="
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "--path=${TEST_DATA_DIR}/mirrors --output-dir=octocat_backup --backup --clone-wiki --github-user-option=owner --include-submodules"
   assert_contains "${TEST_LOG_DIR}/ghorg.log" "clone my-org --scm=github --clone-type=org --token="

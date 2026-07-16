@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+
+RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 def _format_timestamp(value: datetime) -> str:
@@ -45,6 +49,11 @@ class RunManifest:
         started_at: datetime,
         log_file: str,
     ) -> RunManifest:
+        if RUN_ID_PATTERN.fullmatch(run_id) is None:
+            raise ValueError(f"Invalid run ID: {run_id!r}")
+        run_path = state_dir / "runs" / f"{run_id}.json"
+        if run_path.exists():
+            raise FileExistsError(f"Run manifest already exists: {run_path}")
         manifest = cls(
             state_dir=state_dir,
             document={
@@ -79,6 +88,17 @@ class RunManifest:
         }
         self._persist()
 
+    def set_run_context(
+        self,
+        *,
+        configuration: dict[str, Any],
+        tool_versions: dict[str, str],
+    ) -> None:
+        self._ensure_running()
+        self.document["configuration"] = dict(configuration)
+        self.document["tool_versions"] = dict(tool_versions)
+        self._persist()
+
     def record_error(self, detail: str) -> None:
         self._ensure_running()
         self.document["errors"].append(detail)
@@ -94,6 +114,8 @@ class RunManifest:
         detail: str | None = None,
     ) -> None:
         self._ensure_running()
+        if status not in {"succeeded", "failed", "skipped"}:
+            raise ValueError(f"Invalid run stage status: {status}")
         stage_document = {
             "status": status,
             "started_at": _format_timestamp(started_at),

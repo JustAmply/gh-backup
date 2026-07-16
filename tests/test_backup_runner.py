@@ -14,6 +14,13 @@ class RecordingBackupAdapter:
     def configure_authentication(self) -> None:
         self.calls.append(("configure_authentication",))
 
+    def describe_tools(self) -> dict[str, str]:
+        self.calls.append(("describe_tools",))
+        return {
+            "ghorg": "ghorg version 1.11.10",
+            "github-backup": "github-backup 0.61.5",
+        }
+
     def mirror_repositories(self, target: str, target_kind: str) -> None:
         self.calls.append(("mirror_repositories", target, target_kind))
 
@@ -112,6 +119,7 @@ class BackupRunnerTests(unittest.TestCase):
             self.assertEqual(
                 adapter.calls,
                 [
+                    ("describe_tools",),
                     ("configure_authentication",),
                     ("mirror_repositories", "OctoCat", "user"),
                     ("fetch_lfs", "OctoCat"),
@@ -131,6 +139,17 @@ class BackupRunnerTests(unittest.TestCase):
             self.assertEqual(manifest["status"], "verified")
             self.assertEqual(manifest["owner"], "OctoCat")
             self.assertEqual(manifest["orgs"], ["my-org"])
+            self.assertEqual(
+                manifest["configuration"],
+                {"include_submodules": True, "offsite_enabled": False},
+            )
+            self.assertEqual(
+                manifest["tool_versions"],
+                {
+                    "ghorg": "ghorg version 1.11.10",
+                    "github-backup": "github-backup 0.61.5",
+                },
+            )
             self.assertEqual(
                 set(manifest["targets"]["OctoCat"]["stages"]),
                 {"repository_mirror", "lfs", "metadata", "verification"},

@@ -14,10 +14,44 @@ class RecordingCommandRunner:
 
     def __call__(self, args: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
-        return subprocess.CompletedProcess(args, 0, "", "")
+        versions = {
+            ("ghorg", "version"): "ghorg version 1.11.10\n",
+            ("github-backup", "--version"): "github-backup 0.61.5\n",
+            ("git", "--version"): "git version 2.47.3\n",
+            ("git-lfs", "version"): "git-lfs/3.6.1\n",
+            ("restic", "version"): "restic 0.18.0\n",
+        }
+        return subprocess.CompletedProcess(args, 0, versions.get(tuple(args), ""), "")
 
 
 class CommandBackupAdapterTests(unittest.TestCase):
+    def test_tool_versions_are_collected_for_run_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            commands = RecordingCommandRunner()
+            adapter = CommandBackupAdapter(
+                BackupConfig(
+                    owner="OctoCat",
+                    orgs=(),
+                    token="secret-token",
+                    data_dir=Path(temp_dir),
+                    include_submodules=True,
+                ),
+                run_command=commands,
+            )
+
+            versions = adapter.describe_tools()
+
+            self.assertEqual(
+                versions,
+                {
+                    "ghorg": "ghorg version 1.11.10",
+                    "github-backup": "github-backup 0.61.5",
+                    "git": "git version 2.47.3",
+                    "git-lfs": "git-lfs/3.6.1",
+                    "restic": "restic 0.18.0",
+                },
+            )
+
     def test_authentication_configures_noninteractive_github_https_clones(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             commands = RecordingCommandRunner()
@@ -134,7 +168,9 @@ class CommandBackupAdapterTests(unittest.TestCase):
             mirror_root = data_dir / "mirrors" / "OctoCat_backup"
             (mirror_root / "first.git").mkdir(parents=True)
             (mirror_root / "second.wiki").mkdir()
-            (data_dir / "metadata" / "OctoCat").mkdir(parents=True)
+            metadata_dir = data_dir / "metadata" / "OctoCat"
+            metadata_dir.mkdir(parents=True)
+            (metadata_dir / "account.json").write_text("{}", encoding="utf-8")
             commands = RecordingCommandRunner()
             adapter = CommandBackupAdapter(
                 BackupConfig(
@@ -176,6 +212,25 @@ class CommandBackupAdapterTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ValueError, "Expecting value"):
+                adapter.verify_backup("OctoCat")
+
+    def test_verification_rejects_an_empty_metadata_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "mirrors" / "OctoCat_backup").mkdir(parents=True)
+            (data_dir / "metadata" / "OctoCat").mkdir(parents=True)
+            adapter = CommandBackupAdapter(
+                BackupConfig(
+                    owner="OctoCat",
+                    orgs=(),
+                    token="secret-token",
+                    data_dir=data_dir,
+                    include_submodules=True,
+                ),
+                run_command=RecordingCommandRunner(),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "No metadata JSON files"):
                 adapter.verify_backup("OctoCat")
 
 

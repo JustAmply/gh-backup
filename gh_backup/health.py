@@ -29,7 +29,10 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+        document = json.load(handle)
+    if not isinstance(document, dict):
+        raise ValueError("recovery state root must be an object")
+    return document
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -43,7 +46,7 @@ def evaluate_health(
     recovery_point_path = state_dir / "last-success.json"
     try:
         last_run = _read_json(last_run_path)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, ValueError):
         return HealthReport(
             status="unhealthy",
             reason=f"recovery state is unreadable: {last_run_path.name}",
@@ -51,13 +54,29 @@ def evaluate_health(
             recovery_point_run_id=None,
             recovery_age_seconds=None,
         )
+    last_run_id: str | None = None
+    if last_run is not None:
+        run_id = last_run.get("run_id")
+        if (
+            not isinstance(run_id, str)
+            or not run_id
+            or last_run.get("status") not in {"verified", "failed", "degraded"}
+        ):
+            return HealthReport(
+                status="unhealthy",
+                reason=f"recovery state is invalid: {last_run_path.name}",
+                last_run_id=None,
+                recovery_point_run_id=None,
+                recovery_age_seconds=None,
+            )
+        last_run_id = run_id
     try:
         recovery_point = _read_json(recovery_point_path)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, ValueError):
         return HealthReport(
             status="unhealthy",
             reason=f"recovery state is unreadable: {recovery_point_path.name}",
-            last_run_id=last_run.get("run_id") if last_run else None,
+            last_run_id=last_run_id,
             recovery_point_run_id=None,
             recovery_age_seconds=None,
         )
@@ -65,34 +84,61 @@ def evaluate_health(
         return HealthReport(
             status="unhealthy",
             reason="no verified recovery point exists",
-            last_run_id=last_run.get("run_id") if last_run else None,
+            last_run_id=last_run_id,
             recovery_point_run_id=None,
             recovery_age_seconds=None,
         )
 
-    finished_at = _parse_timestamp(str(recovery_point["finished_at"]))
+    try:
+        run_id = recovery_point.get("run_id")
+        finished_at_value = recovery_point.get("finished_at")
+        if (
+            recovery_point.get("status") != "verified"
+            or not isinstance(run_id, str)
+            or not run_id
+            or not isinstance(finished_at_value, str)
+        ):
+            raise ValueError("recovery point is not verified")
+        recovery_point_run_id = run_id
+        finished_at = _parse_timestamp(finished_at_value)
+    except (KeyError, TypeError, ValueError):
+        return HealthReport(
+            status="unhealthy",
+            reason=f"recovery state is invalid: {recovery_point_path.name}",
+            last_run_id=last_run_id,
+            recovery_point_run_id=None,
+            recovery_age_seconds=None,
+        )
     age = now.astimezone(UTC) - finished_at
+    if age.total_seconds() < 0:
+        return HealthReport(
+            status="unhealthy",
+            reason="latest recovery point timestamp is in the future",
+            last_run_id=last_run_id,
+            recovery_point_run_id=recovery_point_run_id,
+            recovery_age_seconds=int(age.total_seconds()),
+        )
     if last_run and last_run.get("status") == "failed":
         return HealthReport(
             status="unhealthy",
             reason="latest backup run failed",
-            last_run_id=str(last_run["run_id"]),
-            recovery_point_run_id=str(recovery_point["run_id"]),
+            last_run_id=last_run_id,
+            recovery_point_run_id=recovery_point_run_id,
             recovery_age_seconds=int(age.total_seconds()),
         )
     if age > maximum_age:
         return HealthReport(
             status="unhealthy",
             reason="latest recovery point is stale",
-            last_run_id=last_run.get("run_id") if last_run else None,
-            recovery_point_run_id=str(recovery_point["run_id"]),
+            last_run_id=last_run_id,
+            recovery_point_run_id=recovery_point_run_id,
             recovery_age_seconds=int(age.total_seconds()),
         )
     return HealthReport(
         status="healthy",
         reason="latest recovery point is current",
-        last_run_id=last_run.get("run_id") if last_run else None,
-        recovery_point_run_id=str(recovery_point["run_id"]),
+        last_run_id=last_run_id,
+        recovery_point_run_id=recovery_point_run_id,
         recovery_age_seconds=int(age.total_seconds()),
     )
 

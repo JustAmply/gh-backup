@@ -137,6 +137,41 @@ class HealthTests(unittest.TestCase):
                 report.reason, "recovery state is unreadable: last-success.json"
             )
 
+    def test_structurally_invalid_recovery_state_is_reported_as_unhealthy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_dir = Path(temp_dir)
+            (state_dir / "last-success.json").write_text(
+                json.dumps({"status": "verified", "finished_at": "not-a-date"}),
+                encoding="utf-8",
+            )
+
+            report = evaluate_health(
+                state_dir=state_dir,
+                now=datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                maximum_age=timedelta(hours=26),
+            )
+
+            self.assertEqual(report.status, "unhealthy")
+            self.assertEqual(
+                report.reason, "recovery state is invalid: last-success.json"
+            )
+
+    def test_non_object_recovery_state_is_reported_as_unhealthy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_dir = Path(temp_dir)
+            (state_dir / "last-success.json").write_text("[]", encoding="utf-8")
+
+            report = evaluate_health(
+                state_dir=state_dir,
+                now=datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                maximum_age=timedelta(hours=26),
+            )
+
+            self.assertEqual(report.status, "unhealthy")
+            self.assertEqual(
+                report.reason, "recovery state is unreadable: last-success.json"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

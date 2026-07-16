@@ -64,6 +64,8 @@ class BackupConfig:
 
 
 class BackupAdapter(Protocol):
+    def describe_tools(self) -> dict[str, str]: ...
+
     def configure_authentication(self) -> None: ...
 
     def mirror_repositories(self, target: str, target_kind: str) -> None: ...
@@ -107,6 +109,21 @@ class BackupRunner:
             log_file=self._log_file,
         )
         manifest.set_targets(owner=self._config.owner, orgs=list(self._config.orgs))
+        try:
+            tool_versions = self._adapter.describe_tools()
+        except Exception as exc:
+            detail = str(exc).replace(self._config.token, "***")
+            LOGGER.error("backup tool inspection failed: %s", detail)
+            manifest.record_error(detail)
+            manifest.finish(status="failed", finished_at=self._clock())
+            return 1
+        manifest.set_run_context(
+            configuration={
+                "include_submodules": self._config.include_submodules,
+                "offsite_enabled": self._offsite_adapter is not None,
+            },
+            tool_versions=tool_versions,
+        )
         try:
             self._adapter.configure_authentication()
         except Exception as exc:

@@ -8,6 +8,33 @@ from gh_backup.manifest import RunManifest
 
 
 class RunManifestTests(unittest.TestCase):
+    def test_run_identity_cannot_escape_or_overwrite_immutable_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_dir = Path(temp_dir)
+            started_at = datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+
+            RunManifest.start(
+                state_dir=state_dir,
+                run_id="unique-run",
+                started_at=started_at,
+                log_file="/data/logs/unique-run.log",
+            )
+
+            with self.assertRaisesRegex(FileExistsError, "already exists"):
+                RunManifest.start(
+                    state_dir=state_dir,
+                    run_id="unique-run",
+                    started_at=started_at,
+                    log_file="/data/logs/duplicate.log",
+                )
+            with self.assertRaisesRegex(ValueError, "Invalid run ID"):
+                RunManifest.start(
+                    state_dir=state_dir,
+                    run_id="../outside",
+                    started_at=started_at,
+                    log_file="/data/logs/unsafe.log",
+                )
+
     def test_start_persists_a_running_manifest_for_the_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             state_dir = Path(temp_dir)
@@ -48,6 +75,13 @@ class RunManifestTests(unittest.TestCase):
             )
 
             manifest.set_targets(owner="OctoCat", orgs=["my-org"])
+            manifest.set_run_context(
+                configuration={
+                    "include_submodules": True,
+                    "offsite_enabled": False,
+                },
+                tool_versions={"ghorg": "ghorg version 1.11.10"},
+            )
             manifest.record_stage(
                 target="OctoCat",
                 stage="repository_mirror",
@@ -64,6 +98,14 @@ class RunManifestTests(unittest.TestCase):
 
             self.assertEqual(persisted["owner"], "OctoCat")
             self.assertEqual(persisted["orgs"], ["my-org"])
+            self.assertEqual(
+                persisted["configuration"],
+                {"include_submodules": True, "offsite_enabled": False},
+            )
+            self.assertEqual(
+                persisted["tool_versions"],
+                {"ghorg": "ghorg version 1.11.10"},
+            )
             self.assertEqual(persisted["targets"]["OctoCat"]["kind"], "user")
             self.assertEqual(
                 persisted["targets"]["my-org"]["kind"], "organization"

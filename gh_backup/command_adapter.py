@@ -53,6 +53,25 @@ class CommandBackupAdapter:
             self._owned_git_config.unlink(missing_ok=True)
             self._owned_git_config = None
 
+    def describe_tools(self) -> dict[str, str]:
+        commands = {
+            "ghorg": ["ghorg", "version"],
+            "github-backup": ["github-backup", "--version"],
+            "git": ["git", "--version"],
+            "git-lfs": ["git-lfs", "version"],
+            "restic": ["restic", "version"],
+        }
+        versions: dict[str, str] = {}
+        for name, args in commands.items():
+            result = self._run_command(
+                args, check=True, capture_output=True, text=True
+            )
+            version = result.stdout.strip()
+            if not version:
+                raise RuntimeError(f"{name} returned an empty version")
+            versions[name] = version
+        return versions
+
     def configure_authentication(self) -> None:
         descriptor, path_value = tempfile.mkstemp(prefix="gh-backup-gitconfig-")
         os.close(descriptor)
@@ -132,6 +151,8 @@ class CommandBackupAdapter:
         if not metadata_dir.is_dir():
             raise RuntimeError(f"Metadata directory missing: {metadata_dir}")
         json_files = sorted(metadata_dir.rglob("*.json"))
+        if not json_files:
+            raise RuntimeError(f"No metadata JSON files found: {metadata_dir}")
         for json_file in json_files:
             with json_file.open(encoding="utf-8") as handle:
                 json.load(handle)
