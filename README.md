@@ -9,7 +9,8 @@ This container creates a local archive of the GitHub account and organizations y
 - repository mirrors with full Git history
 - wiki mirrors
 - Git LFS objects
-- issues, pull requests, comments, labels, milestones, and releases
+- issues, pull requests, review comments, fork metadata, labels, milestones, and releases
+- public security advisories available to the configured token
 - release assets and issue / pull request attachments
 - personal gists, starred items, watched repos, followers, and following for your main account
 - automatic scheduled runs inside the container
@@ -46,22 +47,38 @@ Copy-Item .env.example .env
 Set at least these values:
 
 ```dotenv
-GITHUB_OWNER=your-github-username
 GITHUB_TOKEN=your-token-here
 ```
 
+For file-based secret injection, mount a token file read-only and set
+`GITHUB_TOKEN_FILE` to its path inside the container. When both inputs are set,
+the file takes precedence:
+
+```yaml
+services:
+  gh-backup:
+    environment:
+      GITHUB_TOKEN_FILE: /run/secrets/github-token
+    volumes:
+      - ./secrets/github-token:/run/secrets/github-token:ro
+```
+
+The local `secrets/` directory is ignored by Git and excluded from the Docker
+build context.
+
 Optional:
 
+- `GITHUB_OWNER` if you want an explicit sanity check that the token belongs to that user
 - `GITHUB_ORGS` for extra orgs, comma-separated
 - `BACKUP_CRON` to change the schedule
 - `TZ` to change the timezone
 
-`GITHUB_OWNER` backs up repositories owned by the authenticated user behind `GITHUB_TOKEN`, including owned private repositories. Use `GITHUB_ORGS` to opt in to additional organizations.
+The backup always resolves the personal account from `GITHUB_TOKEN`, including the correct GitHub letter casing, before it starts. If you also set `GITHUB_OWNER`, it is treated as a sanity check and must match that authenticated account.
 
 ### 3. Start the Backup Container
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 What happens next:
@@ -135,14 +152,22 @@ If your organization uses SSO, GitHub may also require you to authorize the toke
 
 The container reads these environment variables from `.env`:
 
-- `GITHUB_OWNER`: your personal GitHub username, required
+- `GITHUB_OWNER`: optional sanity-check username for the personal account behind `GITHUB_TOKEN`
 - `GITHUB_ORGS`: optional comma-separated organizations to back up in addition to the owner account
 - `GITHUB_TOKEN`: your GitHub PAT, required
+- `GITHUB_TOKEN_FILE`: preferred read-only token file path; replaces `GITHUB_TOKEN` when set
 - `BACKUP_CRON`: cron schedule, default `17 2 * * *`
 - `BACKUP_DATA_DIR`: backup root inside the container, default `/data`
 - `TZ`: timezone, default `Europe/Berlin`
 - `RUN_ON_STARTUP`: `true` or `false`, default `true`
 - `GHORG_INCLUDE_SUBMODULES`: `true` or `false`, default `true`
+- `BACKUP_MAX_AGE_HOURS`: maximum healthy recovery-point age, default `26`
+- `BACKUP_MIN_FREE_GB`: minimum free backup storage checked by `validate`, default `1`
+- `RESTIC_REPOSITORY`: optional encrypted offsite repository; empty disables offsite snapshots
+- `RESTIC_PASSWORD_FILE`: required password file when `RESTIC_REPOSITORY` is set
+- `BACKUP_RETENTION_DAILY`: offsite daily snapshots retained, default `7`
+- `BACKUP_RETENTION_WEEKLY`: offsite weekly snapshots retained, default `5`
+- `BACKUP_RETENTION_MONTHLY`: offsite monthly snapshots retained, default `12`
 
 Example:
 
@@ -154,6 +179,28 @@ BACKUP_CRON=17 2 * * *
 TZ=Europe/Berlin
 RUN_ON_STARTUP=true
 GHORG_INCLUDE_SUBMODULES=true
+BACKUP_MAX_AGE_HOURS=26
+BACKUP_MIN_FREE_GB=1
+RESTIC_REPOSITORY=
+RESTIC_PASSWORD_FILE=
+BACKUP_RETENTION_DAILY=7
+BACKUP_RETENTION_WEEKLY=5
+BACKUP_RETENTION_MONTHLY=12
+```
+
+Inspect the latest attempt and recovery point without changing backup data:
+
+```bash
+docker compose run --rm gh-backup status
+docker compose run --rm gh-backup status --json
+```
+
+The `health` command returns a non-zero exit code when the latest run failed,
+no verified recovery point exists, or the latest recovery point is older than
+`BACKUP_MAX_AGE_HOURS`. The image uses the same command for Docker health:
+
+```bash
+docker compose run --rm gh-backup health
 ```
 
 ## Where the Backup Is Stored
@@ -164,8 +211,19 @@ Inside the container, the layout looks like this:
 
 - `<BACKUP_DATA_DIR>/mirrors/<target>_backup/` for repo and wiki mirrors
 - `<BACKUP_DATA_DIR>/metadata/<target>/` for exported GitHub metadata
-- `<BACKUP_DATA_DIR>/state/last-success.json` for the last successful run
+- `<BACKUP_DATA_DIR>/state/runs/<run-id>.json` for immutable run evidence
+- `<BACKUP_DATA_DIR>/state/last-run.json` for the latest completed attempt
+- `<BACKUP_DATA_DIR>/state/last-success.json` for the latest verified recovery point
 - `<BACKUP_DATA_DIR>/logs/` for run logs
+
+Every required target records repository mirroring, LFS collection, metadata
+export, and Git integrity verification separately. A failed run updates
+`last-run.json` but never replaces the previous `last-success.json`.
+
+Verification parses every exported JSON file, runs `git fsck --full` for every
+discovered mirror, and performs a non-destructive local `git push --mirror`
+restore drill for one mirror per target. The drill compares every restored ref
+and object ID before its temporary destination is removed.
 
 With the default Compose setup, Docker manages that storage in the `gh_backup_data` volume.
 
@@ -178,3 +236,28 @@ Use this when you want:
 - repository mirrors plus metadata exports in one place
 
 This is a backup and archive setup, not a one-click restore product. Git mirrors can later be pushed to a new remote with `git push --mirror`. Exported metadata is stored as archive data for recovery and reference.
+
+## Recovery Contract and Architecture
+
+The precise recovery promises, limitations, and objectives are documented in
+[`docs/recovery-contract.md`](docs/recovery-contract.md). Domain terminology is
+defined in [`CONTEXT.md`](CONTEXT.md), and architectural decisions are recorded
+under [`docs/adr/`](docs/adr/). The versioned resource and restoration matrix is
+in [`docs/coverage.md`](docs/coverage.md).
+
+Token handling and container privileges are documented in
+[`docs/security.md`](docs/security.md).
+Operational monitoring, encrypted offsite snapshots, retention, and recovery
+commands are documented in [`docs/operations.md`](docs/operations.md).
+
+## Development checks
+
+Run the same unit and shell regression suite used by CI:
+
+```bash
+bash scripts/check.sh
+```
+
+Pull requests also receive dependency and container vulnerability review. Images
+published from `main` or version tags carry an SBOM, maximum BuildKit provenance,
+and a GitHub artifact attestation bound to the published digest.

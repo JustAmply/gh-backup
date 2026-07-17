@@ -45,8 +45,11 @@ case "${mode}" in
   validate)
     exec /usr/local/bin/validate.sh "$@"
     ;;
+  status|health)
+    runner_python="${GH_BACKUP_RUNNER_PYTHON:-/opt/venv/bin/python3}"
+    exec "${runner_python}" -m gh_backup.health "${mode}" "$@"
+    ;;
   *)
     exec "${mode}" "$@"
     ;;
 esac
-

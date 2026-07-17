@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "github-backup",
+    "pinned_version": "0.61.5"
+  },
+  "metadata": {
+    "selection": [
+      "--private",
+      "--fork"
+    ],
+    "common": [
+      "--issues",
+      "--issue-comments",
+      "--issue-events",
+      "--pulls",
+      "--pull-comments",
+      "--pull-commits",
+      "--pull-details",
+      "--labels",
+      "--milestones",
+      "--releases",
+      "--assets",
+      "--attachments",
+      "--security-advisories"
+    ],
+    "user_only": [
+      "--gists",
+      "--starred-gists",
+      "--starred",
+      "--watched",
+      "--followers",
+      "--following"
+    ]
+  },
+  "unsupported": {
+    "discussions": "not supported by pinned github-backup 0.61.5",
+    "pull_reviews": "not supported by pinned github-backup 0.61.5",
+    "actions_artifacts": "requires a separate storage adapter",
+    "packages": "requires a separate storage adapter",
+    "projects": "no implemented backup adapter",
+    "webhooks": "intentionally excluded from the recovery contract"
+  }
+}
