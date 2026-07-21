@@ -31,6 +31,11 @@ assert_not_contains() {
   fi
 }
 
+assert_file_exists() {
+  local file="$1"
+  [[ -f "${file}" ]] || fail "Expected file to exist: ${file}"
+}
+
 reset_logs() {
   rm -rf "${TEST_LOG_DIR}" "${TEST_DATA_DIR}" "${TMP_DIR}/home"
   mkdir -p "${TEST_LOG_DIR}" "${TEST_DATA_DIR}" "${TEST_BIN_DIR}" "${TMP_DIR}/home"
@@ -234,7 +239,7 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 if [[ "${1:-}" == "-c" && "${2:-}" == *"secrets.token_hex"* ]]; then
-  printf '%s' "a1b2c3d4"
+  printf '%s' "${TEST_RUN_ID_SUFFIX:-a1b2c3d4}"
   exit 0
 fi
 if [[ "${1:-}" != "-" ]]; then
@@ -242,6 +247,10 @@ if [[ "${1:-}" != "-" ]]; then
   exit 1
 fi
 cat >/dev/null
+if [[ "${TEST_GITHUB_AUTH_FAILURE:-}" == "true" ]]; then
+  printf '%s\n' "simulated GitHub authentication failure: ghp_testtoken" >&2
+  exit 1
+fi
 printf '%s' "${TEST_GITHUB_AUTH_LOGIN:-octocat}"
 EOF
 
@@ -269,6 +278,8 @@ run_backup() {
     TEST_LOG_DIR="${TEST_LOG_DIR}" \
     TEST_GHORG_SCENARIO="${ghorg_scenario}" \
     TEST_GITHUB_AUTH_LOGIN="${auth_login}" \
+    TEST_GITHUB_AUTH_FAILURE="${TEST_GITHUB_AUTH_FAILURE:-}" \
+    TEST_RUN_ID_SUFFIX="${TEST_RUN_ID_SUFFIX:-a1b2c3d4}" \
     GH_BACKUP_RUNNER_PYTHON="python" \
     GH_BACKUP_COMMAND_SHELL="$(cygpath -w /usr/bin/bash 2>/dev/null || true)" \
     PYTHONPATH="${ROOT_DIR}" \
@@ -395,6 +406,19 @@ main() {
   write_stubs
   run_backup_expect_failure "${TMP_DIR}/owner-mismatch.log" "success" "" "octocat" "someoneelse"
   assert_contains "${TMP_DIR}/owner-mismatch.log" "GITHUB_OWNER (octocat) must match the GitHub account behind GITHUB_TOKEN (someoneelse)"
+
+  reset_logs
+  write_stubs
+  TEST_RUN_ID_SUFFIX="verified123" \
+    run_backup_expect_success "${TMP_DIR}/before-auth-failure.log" "success" ""
+  TEST_GITHUB_AUTH_FAILURE="true" TEST_RUN_ID_SUFFIX="failed456" \
+    run_backup_expect_failure "${TMP_DIR}/auth-failure.log" "success" ""
+  assert_file_exists "${TEST_DATA_DIR}/state/last-run.json"
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" "-failed456"
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" '"status": "failed"'
+  assert_not_contains "${TEST_DATA_DIR}/state/last-run.json" "ghp_testtoken"
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "-verified123"
+  assert_not_contains "${TEST_DATA_DIR}/state/last-success.json" "-failed456"
 
   reset_logs
   write_stubs
