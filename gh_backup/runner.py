@@ -36,8 +36,8 @@ class BackupConfig:
             token = token_file.read_text(encoding="utf-8").strip("\r\n")
         else:
             token = environment.get("GITHUB_TOKEN", "").strip("\r\n")
-        if not owner:
-            raise ValueError("GITHUB_OWNER must contain the authenticated login")
+        if owner == "change-me":
+            owner = ""
         if not token:
             raise ValueError("GitHub token value is empty")
 
@@ -64,6 +64,8 @@ class BackupConfig:
 
 
 class BackupAdapter(Protocol):
+    def resolve_authenticated_login(self) -> str: ...
+
     def describe_tools(self) -> dict[str, str]: ...
 
     def configure_authentication(self) -> None: ...
@@ -108,7 +110,36 @@ class BackupRunner:
             started_at=self._clock(),
             log_file=self._log_file,
         )
-        manifest.set_targets(owner=self._config.owner, orgs=list(self._config.orgs))
+        try:
+            owner = self._adapter.resolve_authenticated_login()
+        except Exception as exc:
+            detail = str(exc).replace(self._config.token, "***")
+            LOGGER.error("GitHub login resolution failed: %s", detail)
+            manifest.record_error(detail)
+            manifest.finish(status="failed", finished_at=self._clock())
+            return 1
+        if self._config.owner and self._config.owner.casefold() != owner.casefold():
+            detail = (
+                f"GITHUB_OWNER ({self._config.owner}) must match the GitHub account "
+                f"behind GITHUB_TOKEN ({owner})"
+            )
+            LOGGER.error("%s", detail)
+            manifest.record_error(detail)
+            manifest.finish(status="failed", finished_at=self._clock())
+            return 1
+        if self._config.owner and self._config.owner != owner:
+            LOGGER.warning(
+                "Normalizing GITHUB_OWNER from %s to %s", self._config.owner, owner
+            )
+        targets = self._targets(owner)
+        manifest.set_targets(
+            owner=owner,
+            orgs=[
+                target
+                for target, target_kind in targets
+                if target_kind == "organization"
+            ],
+        )
         try:
             tool_versions = self._adapter.describe_tools()
         except Exception as exc:
@@ -134,7 +165,7 @@ class BackupRunner:
             return 1
 
         all_targets_succeeded = True
-        for target, target_kind in self._targets():
+        for target, target_kind in targets:
             target_succeeded = True
             stages: list[tuple[str, Callable[[], str | None]]] = [
                 (
@@ -202,11 +233,14 @@ class BackupRunner:
         manifest.finish(status=terminal_status, finished_at=self._clock())
         return 0 if all_targets_succeeded else 1
 
-    def _targets(self) -> list[tuple[str, str]]:
-        return [
-            (self._config.owner, "user"),
-            *((org, "organization") for org in self._config.orgs),
-        ]
+    def _targets(self, owner: str) -> list[tuple[str, str]]:
+        targets = [(owner, "user")]
+        seen = {owner.casefold()}
+        for org in self._config.orgs:
+            if org.casefold() not in seen:
+                seen.add(org.casefold())
+                targets.append((org, "organization"))
+        return targets
 
     def _run_stage(
         self,

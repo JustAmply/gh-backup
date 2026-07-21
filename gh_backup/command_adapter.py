@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 from gh_backup.coverage import CoveragePolicy
 from gh_backup.process import CommandRunner, command_runner_from_environment
@@ -52,6 +53,23 @@ class CommandBackupAdapter:
         if self._owned_git_config is not None:
             self._owned_git_config.unlink(missing_ok=True)
             self._owned_git_config = None
+
+    def resolve_authenticated_login(self) -> str:
+        request = Request(
+            "https://api.github.com/user",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self._config.token}",
+                "User-Agent": "gh-backup",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urlopen(request, timeout=30) as response:
+            document = json.load(response)
+        login = document.get("login") if isinstance(document, dict) else None
+        if not isinstance(login, str) or not login:
+            raise RuntimeError("GitHub user response did not contain a login")
+        return login
 
     def describe_tools(self) -> dict[str, str]:
         commands = {

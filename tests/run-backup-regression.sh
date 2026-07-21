@@ -242,16 +242,31 @@ if [[ "${1:-}" == "-c" && "${2:-}" == *"secrets.token_hex"* ]]; then
   printf '%s' "${TEST_RUN_ID_SUFFIX:-a1b2c3d4}"
   exit 0
 fi
-if [[ "${1:-}" != "-" ]]; then
-  printf 'unexpected python3 args: %s\n' "$*" >&2
-  exit 1
-fi
-cat >/dev/null
-if [[ "${TEST_GITHUB_AUTH_FAILURE:-}" == "true" ]]; then
-  printf '%s\n' "simulated GitHub authentication failure: ghp_testtoken" >&2
-  exit 1
-fi
-printf '%s' "${TEST_GITHUB_AUTH_LOGIN:-octocat}"
+printf 'unexpected python3 args: %s\n' "$*" >&2
+exit 1
+EOF
+
+  cat > "${TEST_BIN_DIR}/sitecustomize.py" <<'EOF'
+import io
+import json
+import os
+import urllib.request
+
+original_urlopen = urllib.request.urlopen
+
+
+def test_urlopen(request, *args, **kwargs):
+    if request.full_url != "https://api.github.com/user":
+        return original_urlopen(request, *args, **kwargs)
+    if os.environ.get("TEST_GITHUB_AUTH_FAILURE") == "true":
+        raise RuntimeError(
+            "simulated GitHub authentication failure: ghp_testtoken"
+        )
+    document = {"login": os.environ.get("TEST_GITHUB_AUTH_LOGIN", "octocat")}
+    return io.BytesIO(json.dumps(document).encode("utf-8"))
+
+
+urllib.request.urlopen = test_urlopen
 EOF
 
   chmod +x \
@@ -282,7 +297,7 @@ run_backup() {
     TEST_RUN_ID_SUFFIX="${TEST_RUN_ID_SUFFIX:-a1b2c3d4}" \
     GH_BACKUP_RUNNER_PYTHON="python" \
     GH_BACKUP_COMMAND_SHELL="$(cygpath -w /usr/bin/bash 2>/dev/null || true)" \
-    PYTHONPATH="${ROOT_DIR}" \
+    PYTHONPATH="${TEST_BIN_DIR}:${ROOT_DIR}" \
     GITHUB_OWNER="${owner}" \
     GITHUB_ORGS="${orgs}" \
     GITHUB_TOKEN="ghp_testtoken" \

@@ -10,33 +10,6 @@ die() {
   exit 1
 }
 
-trim() {
-  local value="${1:-}"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "${value}"
-}
-
-resolve_authenticated_github_login() {
-  GITHUB_TOKEN="${GITHUB_TOKEN}" python3 - <<'PY'
-import json, os, sys, urllib.request
-try:
-    response = urllib.request.urlopen(urllib.request.Request(
-        "https://api.github.com/user",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-            "User-Agent": "gh-backup",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    ))
-    sys.stdout.write(json.load(response)["login"])
-except Exception as exc:
-    print(exc, file=sys.stderr)
-    sys.exit(1)
-PY
-}
-
 : "${GITHUB_OWNER:=}"
 : "${GITHUB_ORGS:=}"
 : "${GITHUB_TOKEN:=}"
@@ -61,18 +34,6 @@ exec 9>"${BACKUP_DATA_DIR}/state/backup.lock"
 if ! flock -n 9; then
   die "Another backup run is already in progress"
 fi
-
-configured_owner="$(trim "${GITHUB_OWNER}")"
-[[ "${configured_owner}" == "change-me" ]] && configured_owner=""
-
-authenticated_login="$(resolve_authenticated_github_login)" || die "Unable to resolve the authenticated GitHub login"
-if [[ -n "${configured_owner}" && "${configured_owner,,}" != "${authenticated_login,,}" ]]; then
-  die "GITHUB_OWNER (${configured_owner}) must match the GitHub account behind GITHUB_TOKEN (${authenticated_login})"
-fi
-if [[ -n "${configured_owner}" && "${configured_owner}" != "${authenticated_login}" ]]; then
-  log "Normalizing GITHUB_OWNER from ${configured_owner} to ${authenticated_login}"
-fi
-GITHUB_OWNER="${authenticated_login}"
 
 if [[ -z "${GITHUB_TOKEN_FILE}" ]]; then
   GITHUB_TOKEN_FILE="$(mktemp)"

@@ -8,8 +8,13 @@ from gh_backup.runner import BackupConfig, BackupRunner
 
 
 class RecordingBackupAdapter:
-    def __init__(self) -> None:
+    def __init__(self, authenticated_login: str = "OctoCat") -> None:
         self.calls: list[tuple[str, ...]] = []
+        self.authenticated_login = authenticated_login
+
+    def resolve_authenticated_login(self) -> str:
+        self.calls.append(("resolve_authenticated_login",))
+        return self.authenticated_login
 
     def configure_authentication(self) -> None:
         self.calls.append(("configure_authentication",))
@@ -95,6 +100,35 @@ class BackupRunnerTests(unittest.TestCase):
             self.assertEqual(config.token, "file-secret")
             self.assertEqual(config.token_file, token_file)
 
+    def test_authenticated_owner_is_not_repeated_as_an_organization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            adapter = RecordingBackupAdapter(authenticated_login="OctoCat")
+            runner = BackupRunner(
+                config=BackupConfig(
+                    owner="",
+                    orgs=("octocat", "my-org"),
+                    token="secret-token",
+                    data_dir=data_dir,
+                    include_submodules=True,
+                ),
+                adapter=adapter,
+                run_id="deduplicated-owner-run",
+                log_file=str(data_dir / "logs" / "run.log"),
+                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+            )
+
+            result = runner.run()
+
+            self.assertEqual(result, 0)
+            manifest = json.loads(
+                (data_dir / "state" / "last-success.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(manifest["owner"], "OctoCat")
+            self.assertEqual(manifest["orgs"], ["my-org"])
+
     def test_successful_run_executes_every_stage_and_publishes_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
@@ -119,6 +153,7 @@ class BackupRunnerTests(unittest.TestCase):
             self.assertEqual(
                 adapter.calls,
                 [
+                    ("resolve_authenticated_login",),
                     ("describe_tools",),
                     ("configure_authentication",),
                     ("mirror_repositories", "OctoCat", "user"),
