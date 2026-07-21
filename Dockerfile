@@ -14,12 +14,16 @@ RUN python -m venv /opt/venv \
 FROM golang:1.26.5-bookworm AS go-tools-builder
 
 ARG GHORG_VERSION=v1.11.13
+ARG GHORG_X_IMAGE_VERSION=v0.43.0
 ARG SUPERCRONIC_VERSION=v0.2.47
 
 ENV CGO_ENABLED=0
 ENV GOTOOLCHAIN=local
 
-RUN go install "github.com/gabrie30/ghorg@${GHORG_VERSION}" \
+RUN git clone --branch "${GHORG_VERSION}" --depth 1 https://github.com/gabrie30/ghorg.git /tmp/ghorg \
+    && cd /tmp/ghorg \
+    && go mod edit -require="golang.org/x/image@${GHORG_X_IMAGE_VERSION}" \
+    && go build -mod=mod -trimpath -o /go/bin/ghorg . \
     && go install -ldflags "-X main.Version=${SUPERCRONIC_VERSION}" \
     "github.com/aptible/supercronic@${SUPERCRONIC_VERSION}"
 
