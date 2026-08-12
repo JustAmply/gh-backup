@@ -300,9 +300,10 @@ run_backup() {
     PYTHONPATH="${TEST_BIN_DIR}:${ROOT_DIR}" \
     GITHUB_OWNER="${owner}" \
     GITHUB_ORGS="${orgs}" \
-    GITHUB_TOKEN="ghp_testtoken" \
+    GITHUB_TOKEN="${TEST_GITHUB_TOKEN-ghp_testtoken}" \
     BACKUP_DATA_DIR="${TEST_DATA_DIR}" \
-    GHORG_INCLUDE_SUBMODULES="true" \
+    BACKUP_MIN_FREE_GB="${TEST_BACKUP_MIN_FREE_GB:-0}" \
+    GHORG_INCLUDE_SUBMODULES="${TEST_INCLUDE_SUBMODULES:-true}" \
     RESTIC_REPOSITORY="${TEST_RESTIC_REPOSITORY:-}" \
     RESTIC_PASSWORD_FILE="${TEST_RESTIC_PASSWORD_FILE:-}" \
     bash "${ROOT_DIR}/scripts/run-backup.sh" >"${output_file}" 2>&1
@@ -396,6 +397,19 @@ main() {
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"owner\": \"octocat\""
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"orgs\": ["
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"my-org\""
+
+  TEST_GITHUB_TOKEN="" \
+    TEST_INCLUDE_SUBMODULES="perhaps" \
+    TEST_BACKUP_MIN_FREE_GB="-1" \
+    TEST_RUN_ID_SUFFIX="invalidconfig" \
+    run_backup_expect_failure "${TMP_DIR}/invalid-configuration.log"
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" "-invalidconfig"
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" '"status": "failed"'
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" "GitHub token value is empty"
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" "GHORG_INCLUDE_SUBMODULES must be a boolean value"
+  assert_contains "${TEST_DATA_DIR}/state/last-run.json" "BACKUP_MIN_FREE_GB must not be negative"
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "-a1b2c3d4"
+  assert_not_contains "${TEST_DATA_DIR}/state/last-success.json" "-invalidconfig"
 
   reset_logs
   write_stubs

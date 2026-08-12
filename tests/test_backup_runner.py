@@ -5,7 +5,29 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from gh_backup.configuration import BackupConfig
+from gh_backup.manifest import RunManifest
 from gh_backup.runner import BackupRunner
+
+
+FIXED_TIME = datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+
+
+def start_manifest(data_dir: Path, run_id: str, log_name: str) -> RunManifest:
+    return RunManifest.start(
+        state_dir=data_dir / "state",
+        run_id=run_id,
+        started_at=FIXED_TIME,
+        log_file=str(data_dir / "logs" / log_name),
+    )
+
+
+def execute_runner(runner: BackupRunner, manifest: RunManifest) -> int:
+    execution = runner.run(manifest)
+    if execution.errors:
+        manifest.fail(errors=execution.errors, finished_at=FIXED_TIME)
+        return 1
+    status = manifest.finish(finished_at=FIXED_TIME)
+    return 0 if status == "verified" else 1
 
 
 class RecordingBackupAdapter:
@@ -81,12 +103,13 @@ class BackupRunnerTests(unittest.TestCase):
                     include_submodules=True,
                 ),
                 adapter=adapter,
-                run_id="deduplicated-owner-run",
-                log_file=str(data_dir / "logs" / "run.log"),
-                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                clock=lambda: FIXED_TIME,
             )
 
-            result = runner.run()
+            result = execute_runner(
+                runner,
+                start_manifest(data_dir, "deduplicated-owner-run", "run.log")
+            )
 
             self.assertEqual(result, 0)
             manifest = json.loads(
@@ -110,12 +133,15 @@ class BackupRunnerTests(unittest.TestCase):
                     include_submodules=True,
                 ),
                 adapter=adapter,
-                run_id="20260716T120000Z-a1b2c3d4",
-                log_file=str(data_dir / "logs" / "run.log"),
-                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                clock=lambda: FIXED_TIME,
             )
 
-            result = runner.run()
+            result = execute_runner(
+                runner,
+                start_manifest(
+                    data_dir, "20260716T120000Z-a1b2c3d4", "run.log"
+                )
+            )
 
             self.assertEqual(result, 0)
             self.assertEqual(
@@ -170,13 +196,14 @@ class BackupRunnerTests(unittest.TestCase):
                     include_submodules=True,
                 ),
                 adapter=FailingAuthenticationAdapter(),
-                run_id="auth-failed-run",
-                log_file=str(data_dir / "logs" / "failed.log"),
-                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                clock=lambda: FIXED_TIME,
             )
 
             with self.assertLogs("gh_backup.runner", level="ERROR"):
-                result = runner.run()
+                result = execute_runner(
+                    runner,
+                    start_manifest(data_dir, "auth-failed-run", "failed.log")
+                )
 
             manifest = json.loads(
                 (data_dir / "state" / "last-run.json").read_text(encoding="utf-8")
@@ -202,12 +229,13 @@ class BackupRunnerTests(unittest.TestCase):
                 ),
                 adapter=RecordingBackupAdapter(),
                 offsite_adapter=offsite,
-                run_id="offsite-run",
-                log_file=str(data_dir / "logs" / "offsite.log"),
-                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                clock=lambda: FIXED_TIME,
             )
 
-            result = runner.run()
+            result = execute_runner(
+                runner,
+                start_manifest(data_dir, "offsite-run", "offsite.log")
+            )
 
             manifest = json.loads(
                 (data_dir / "state" / "last-success.json").read_text(
@@ -239,13 +267,16 @@ class BackupRunnerTests(unittest.TestCase):
                 ),
                 adapter=RecordingBackupAdapter(),
                 offsite_adapter=FailingOffsiteAdapter(),
-                run_id="offsite-failed-run",
-                log_file=str(data_dir / "logs" / "offsite-failed.log"),
-                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                clock=lambda: FIXED_TIME,
             )
 
             with self.assertLogs("gh_backup.runner", level="ERROR"):
-                result = runner.run()
+                result = execute_runner(
+                    runner,
+                    start_manifest(
+                        data_dir, "offsite-failed-run", "offsite-failed.log"
+                    )
+                )
 
             manifest = json.loads(
                 (data_dir / "state" / "last-run.json").read_text(encoding="utf-8")
@@ -267,13 +298,14 @@ class BackupRunnerTests(unittest.TestCase):
                     include_submodules=True,
                 ),
                 adapter=FailingOrganizationAdapter(),
-                run_id="failed-run",
-                log_file=str(data_dir / "logs" / "failed.log"),
-                clock=lambda: datetime(2026, 7, 16, 12, 0, tzinfo=UTC),
+                clock=lambda: FIXED_TIME,
             )
 
             with self.assertLogs("gh_backup.runner", level="ERROR") as logs:
-                result = runner.run()
+                result = execute_runner(
+                    runner,
+                    start_manifest(data_dir, "failed-run", "failed.log")
+                )
 
             self.assertEqual(result, 1)
             self.assertIn("ghorg backup failed for my-org", logs.output[0])

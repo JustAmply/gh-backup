@@ -7,11 +7,17 @@ import os
 import secrets
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import MutableMapping, Protocol
 
-from gh_backup.configuration import BackupConfig, OperationalConfig
+from gh_backup.configuration import (
+    BackupConfig,
+    ConfigurationError,
+    OffsiteConfig,
+    OperationalConfig,
+)
 from gh_backup.manifest import RunManifest
 
 
@@ -34,8 +40,21 @@ class BackupAdapter(Protocol):
     def verify_backup(self, target: str) -> str | None: ...
 
 
+class ManagedBackupAdapter(BackupAdapter, Protocol):
+    def cleanup(self) -> None: ...
+
+
 class OffsiteAdapter(Protocol):
     def archive(self, *, run_id: str, data_dir: Path) -> str: ...
+
+
+AdapterFactory = Callable[[BackupConfig], ManagedBackupAdapter]
+OffsiteAdapterFactory = Callable[[OffsiteConfig | None], OffsiteAdapter | None]
+
+
+@dataclass(frozen=True)
+class BackupExecution:
+    errors: tuple[str, ...] = ()
 
 
 class BackupRunner:
@@ -47,39 +66,27 @@ class BackupRunner:
         config: BackupConfig,
         adapter: BackupAdapter,
         offsite_adapter: OffsiteAdapter | None = None,
-        run_id: str,
-        log_file: str,
         clock: Callable[[], datetime],
     ) -> None:
         self._config = config
         self._adapter = adapter
         self._offsite_adapter = offsite_adapter
-        self._run_id = run_id
-        self._log_file = log_file
         self._clock = clock
 
-    def run(self) -> int:
-        manifest = RunManifest.start(
-            state_dir=self._config.data_dir / "state",
-            run_id=self._run_id,
-            started_at=self._clock(),
-            log_file=self._log_file,
-        )
+    def run(self, manifest: RunManifest) -> BackupExecution:
         try:
             owner = self._adapter.resolve_authenticated_login()
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             LOGGER.error("GitHub login resolution failed: %s", detail)
-            manifest.fail(errors=detail, finished_at=self._clock())
-            return 1
+            return BackupExecution(errors=(detail,))
         if self._config.owner and self._config.owner.casefold() != owner.casefold():
             detail = (
                 f"GITHUB_OWNER ({self._config.owner}) must match the GitHub account "
                 f"behind GITHUB_TOKEN ({owner})"
             )
             LOGGER.error("%s", detail)
-            manifest.fail(errors=detail, finished_at=self._clock())
-            return 1
+            return BackupExecution(errors=(detail,))
         if self._config.owner and self._config.owner != owner:
             LOGGER.warning(
                 "Normalizing GITHUB_OWNER from %s to %s", self._config.owner, owner
@@ -98,8 +105,7 @@ class BackupRunner:
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             LOGGER.error("backup tool inspection failed: %s", detail)
-            manifest.fail(errors=detail, finished_at=self._clock())
-            return 1
+            return BackupExecution(errors=(detail,))
         manifest.set_run_context(
             configuration={
                 "include_submodules": self._config.include_submodules,
@@ -112,8 +118,7 @@ class BackupRunner:
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             LOGGER.error("backup authentication failed: %s", detail)
-            manifest.fail(errors=detail, finished_at=self._clock())
-            return 1
+            return BackupExecution(errors=(detail,))
 
         all_targets_succeeded = True
         for target, target_kind in targets:
@@ -158,7 +163,7 @@ class BackupRunner:
             started_at = self._clock()
             try:
                 detail = self._offsite_adapter.archive(
-                    run_id=self._run_id, data_dir=self._config.data_dir
+                    run_id=manifest.run_id, data_dir=self._config.data_dir
                 )
             except Exception as exc:
                 detail = str(exc).replace(self._config.token, "***")
@@ -180,8 +185,7 @@ class BackupRunner:
                     detail=detail,
                 )
 
-        terminal_status = manifest.finish(finished_at=self._clock())
-        return 0 if terminal_status == "verified" else 1
+        return BackupExecution()
 
     def _targets(self, owner: str) -> list[tuple[str, str]]:
         targets = [(owner, "user")]
@@ -231,36 +235,108 @@ class BackupRunner:
         return True
 
 
+class BackupApplication:
+    """Own one backup run from manifest creation through adapter cleanup."""
+
+    def __init__(
+        self,
+        *,
+        environment: MutableMapping[str, str],
+        adapter_factory: AdapterFactory,
+        offsite_adapter_factory: OffsiteAdapterFactory,
+        clock: Callable[[], datetime],
+    ) -> None:
+        self._environment = environment
+        self._adapter_factory = adapter_factory
+        self._offsite_adapter_factory = offsite_adapter_factory
+        self._clock = clock
+
+    def run(self) -> int:
+        started_at = self._clock()
+        run_id = self._environment.get(
+            "GH_BACKUP_RUN_ID",
+            f"{started_at.astimezone().strftime('%Y%m%dT%H%M%SZ')}-"
+            f"{secrets.token_hex(4)}",
+        )
+        data_dir = Path(self._environment.get("BACKUP_DATA_DIR", "/data"))
+        log_file = self._environment.get(
+            "GH_BACKUP_LOG_FILE", str(data_dir / "logs" / f"{run_id}.log")
+        )
+        manifest = RunManifest.start(
+            state_dir=data_dir / "state",
+            run_id=run_id,
+            started_at=started_at,
+            log_file=log_file,
+        )
+
+        try:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.touch(exist_ok=True)
+        except OSError as exc:
+            detail = f"Backup log cannot be created: {exc}"
+            LOGGER.error("%s", detail)
+            manifest.fail(errors=detail, finished_at=self._clock())
+            return 1
+
+        try:
+            operational_config = OperationalConfig.from_environment(
+                self._environment
+            )
+        except ConfigurationError as exc:
+            for detail in exc.errors:
+                LOGGER.error("backup configuration invalid: %s", detail)
+            manifest.fail(errors=exc.errors, finished_at=self._clock())
+            return 1
+
+        config = operational_config.backup
+        self._environment.pop("GITHUB_TOKEN", None)
+        adapter: ManagedBackupAdapter | None = None
+        execution = BackupExecution()
+        lifecycle_errors: list[str] = []
+        try:
+            adapter = self._adapter_factory(config)
+            offsite_adapter = self._offsite_adapter_factory(
+                operational_config.offsite
+            )
+            execution = BackupRunner(
+                config=config,
+                adapter=adapter,
+                offsite_adapter=offsite_adapter,
+                clock=self._clock,
+            ).run(manifest)
+        except Exception as exc:
+            detail = str(exc).replace(config.token, "***")
+            LOGGER.error("backup run failed unexpectedly: %s", detail)
+            lifecycle_errors.append(detail)
+        finally:
+            if adapter is not None:
+                try:
+                    adapter.cleanup()
+                except Exception as exc:
+                    detail = str(exc).replace(config.token, "***")
+                    LOGGER.error("backup adapter cleanup failed: %s", detail)
+                    lifecycle_errors.append(detail)
+
+        errors = [*execution.errors, *lifecycle_errors]
+        if errors:
+            manifest.fail(errors=errors, finished_at=self._clock())
+            return 1
+        terminal_status = manifest.finish(finished_at=self._clock())
+        return 0 if terminal_status == "verified" else 1
+
+
 def main() -> int:
     from gh_backup.command_adapter import CommandBackupAdapter
     from gh_backup.offsite import offsite_adapter_from_config
 
     logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s")
-    operational_config = OperationalConfig.from_environment(os.environ)
-    config = operational_config.backup
-    now = datetime.now().astimezone()
-    run_id = os.environ.get(
-        "GH_BACKUP_RUN_ID",
-        f"{now.astimezone().strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}",
-    )
-    log_file = os.environ.get(
-        "GH_BACKUP_LOG_FILE", str(config.data_dir / "logs" / f"{run_id}.log")
-    )
-    adapter = CommandBackupAdapter(config)
-    offsite_adapter = offsite_adapter_from_config(operational_config.offsite)
-    try:
-        return BackupRunner(
-            config=config,
-            adapter=adapter,
-            offsite_adapter=offsite_adapter,
-            run_id=run_id,
-            log_file=log_file,
-            clock=lambda: datetime.now().astimezone(),
-        ).run()
-    finally:
-        adapter.cleanup()
-        if os.environ.get("GH_BACKUP_EPHEMERAL_TOKEN_FILE") == "true":
-            Path(os.environ["GITHUB_TOKEN_FILE"]).unlink(missing_ok=True)
+    return BackupApplication(
+        environment=os.environ,
+        adapter_factory=CommandBackupAdapter,
+        offsite_adapter_factory=offsite_adapter_from_config,
+        clock=lambda: datetime.now().astimezone(),
+    ).run()
 
 
 if __name__ == "__main__":
