@@ -129,6 +129,7 @@ class RunManifest:
         started_at: datetime,
         finished_at: datetime,
         detail: str | None = None,
+        evidence: dict[str, str] | None = None,
     ) -> None:
         self._ensure_running()
         if status not in {"succeeded", "failed", "skipped"}:
@@ -140,6 +141,8 @@ class RunManifest:
         }
         if detail is not None:
             stage_document["detail"] = detail
+        if evidence is not None:
+            stage_document["evidence"] = dict(evidence)
         self._document["run_stages"][stage] = stage_document
         self._persist()
 
@@ -216,6 +219,17 @@ class RunManifest:
             offsite = self._document["run_stages"].get("offsite")
             if not isinstance(offsite, dict) or offsite.get("status") != "succeeded":
                 errors.append("Recovery qualification requires offsite to succeed")
+            else:
+                evidence = offsite.get("evidence")
+                snapshot_id = (
+                    evidence.get("snapshot_id")
+                    if isinstance(evidence, dict)
+                    else None
+                )
+                if not isinstance(snapshot_id, str) or not snapshot_id:
+                    errors.append(
+                        "Recovery qualification requires an offsite snapshot identity"
+                    )
 
         tool_versions = self._document.get("tool_versions")
         if not isinstance(tool_versions, dict) or not tool_versions:

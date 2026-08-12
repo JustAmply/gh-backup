@@ -234,6 +234,12 @@ class RunManifestTests(unittest.TestCase):
                 timestamp=timestamp,
                 offsite_enabled=True,
             )
+            manifest.record_run_stage(
+                stage="offsite",
+                status="succeeded",
+                started_at=timestamp,
+                finished_at=timestamp,
+            )
 
             status = manifest.finish(finished_at=timestamp)
 
@@ -241,7 +247,7 @@ class RunManifestTests(unittest.TestCase):
                 (state_dir / "last-run.json").read_text(encoding="utf-8")
             )
             self.assertEqual(status, "failed")
-            self.assertIn("offsite", last_run["errors"][0])
+            self.assertIn("snapshot identity", last_run["errors"][0])
             self.assertFalse((state_dir / "last-success.json").exists())
 
 

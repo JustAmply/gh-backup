@@ -217,6 +217,9 @@ for arg in "$@"; do
   fi
 done
 printf '%s\n' "${normalized_args[*]}" >> "${TEST_LOG_DIR}/restic.log"
+if [[ "${1:-}" == "backup" ]]; then
+  printf '%s\n' '{"message_type":"summary","snapshot_id":"restic-test-snapshot"}'
+fi
 EOF
 
   cat > "${TEST_BIN_DIR}/flock" <<'EOF'
@@ -417,10 +420,11 @@ main() {
   TEST_RESTIC_REPOSITORY="${TMP_DIR}/restic-repository" \
     TEST_RESTIC_PASSWORD_FILE="${TMP_DIR}/restic-password" \
     run_backup_expect_success "${TMP_DIR}/offsite-output.log" "success" ""
-  assert_contains "${TEST_LOG_DIR}/restic.log" "backup ${TEST_DATA_DIR} --tag gh-backup --tag run:"
+  assert_contains "${TEST_LOG_DIR}/restic.log" "backup ${TEST_DATA_DIR}/mirrors ${TEST_DATA_DIR}/metadata --tag gh-backup --tag run:"
   assert_contains "${TEST_LOG_DIR}/restic.log" "check"
   assert_contains "${TEST_LOG_DIR}/restic.log" "forget --tag gh-backup --keep-daily 7 --keep-weekly 5 --keep-monthly 12 --prune"
   assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"offsite\""
+  assert_contains "${TEST_DATA_DIR}/state/last-success.json" "\"snapshot_id\": \"restic-test-snapshot\""
 
   reset_logs
   write_stubs

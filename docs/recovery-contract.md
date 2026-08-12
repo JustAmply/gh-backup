@@ -66,6 +66,9 @@ Working data is stored in the configured Docker volume. That volume alone is one
 local copy, not an offsite guarantee. When `RESTIC_REPOSITORY` and a password
 file are configured, encrypted Restic snapshot creation, repository checking,
 and retention become required stages for publishing a verified recovery point.
+The snapshot contains repository mirrors and archived metadata. The terminal
+run manifest remains local and records the verified Restic snapshot identity;
+state pointers and logs are not copied into the snapshot.
 
 ## Operator Responsibilities
 

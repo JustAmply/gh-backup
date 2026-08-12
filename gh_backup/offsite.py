@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from gh_backup.configuration import OffsiteConfig, RetentionPolicy
 from gh_backup.process import CommandRunner, command_runner_from_environment
+
+
+@dataclass(frozen=True)
+class OffsiteEvidence:
+    snapshot_id: str
+    detail: str
 
 
 class ResticOffsiteAdapter:
@@ -18,22 +26,25 @@ class ResticOffsiteAdapter:
         self._retention = retention
         self._run_command = run_command or command_runner_from_environment()
 
-    def archive(self, *, run_id: str, data_dir: Path) -> str:
-        self._run_command(
+    def archive(self, *, run_id: str, data_dir: Path) -> OffsiteEvidence:
+        result = self._run_command(
             [
                 "restic",
                 "backup",
-                str(data_dir),
+                str(data_dir / "mirrors"),
+                str(data_dir / "metadata"),
                 "--tag",
                 "gh-backup",
                 "--tag",
                 f"run:{run_id}",
-                "--exclude",
-                str(data_dir / "state" / "restore-drills"),
+                "--json",
+                "--quiet",
             ],
             check=True,
+            capture_output=True,
             text=True,
         )
+        snapshot_id = _snapshot_id(result.stdout)
         self._run_command(["restic", "check"], check=True, text=True)
         self._run_command(
             [
@@ -52,7 +63,24 @@ class ResticOffsiteAdapter:
             check=True,
             text=True,
         )
-        return "encrypted offsite snapshot verified and retained"
+        return OffsiteEvidence(
+            snapshot_id=snapshot_id,
+            detail=f"encrypted offsite snapshot {snapshot_id} verified and retained",
+        )
+
+
+def _snapshot_id(output: str) -> str:
+    for line in output.splitlines():
+        try:
+            document = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(document, dict) or document.get("message_type") != "summary":
+            continue
+        snapshot_id = document.get("snapshot_id")
+        if isinstance(snapshot_id, str) and snapshot_id:
+            return snapshot_id
+    raise RuntimeError("Restic backup did not report a snapshot ID")
 
 
 def offsite_adapter_from_config(

@@ -65,6 +65,12 @@ scheduler process is alive.
 The atomic state change that makes a verified backup run the latest recovery
 point. Failed or partially completed runs are never published.
 
+### Offsite Snapshot
+
+An encrypted snapshot of repository mirrors and archived metadata stored outside
+the active backup volume. Its snapshot identity is recorded in the run manifest;
+mutable state and logs are not part of the snapshot.
+
 ## Invariants
 
 - Secrets never appear in run manifests or persisted command logs.

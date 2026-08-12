@@ -6,6 +6,7 @@ from pathlib import Path
 
 from gh_backup.configuration import BackupConfig
 from gh_backup.manifest import RunManifest
+from gh_backup.offsite import OffsiteEvidence
 from gh_backup.runner import BackupRunner
 
 
@@ -78,13 +79,16 @@ class RecordingOffsiteAdapter:
     def __init__(self) -> None:
         self.run_ids: list[str] = []
 
-    def archive(self, *, run_id: str, data_dir: Path) -> str:
+    def archive(self, *, run_id: str, data_dir: Path) -> OffsiteEvidence:
         self.run_ids.append(run_id)
-        return "offsite verified"
+        return OffsiteEvidence(
+            snapshot_id="abc123def456",
+            detail="offsite verified",
+        )
 
 
 class FailingOffsiteAdapter:
-    def archive(self, *, run_id: str, data_dir: Path) -> str:
+    def archive(self, *, run_id: str, data_dir: Path) -> OffsiteEvidence:
         del run_id, data_dir
         raise RuntimeError("offsite unavailable")
 
@@ -251,6 +255,7 @@ class BackupRunnerTests(unittest.TestCase):
                     "started_at": "2026-07-16T12:00:00Z",
                     "finished_at": "2026-07-16T12:00:00Z",
                     "detail": "offsite verified",
+                    "evidence": {"snapshot_id": "abc123def456"},
                 },
             )
 

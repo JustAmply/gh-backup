@@ -19,6 +19,7 @@ from gh_backup.configuration import (
     OperationalConfig,
 )
 from gh_backup.manifest import RunManifest
+from gh_backup.offsite import OffsiteEvidence
 
 
 LOGGER = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ class ManagedBackupAdapter(BackupAdapter, Protocol):
 
 
 class OffsiteAdapter(Protocol):
-    def archive(self, *, run_id: str, data_dir: Path) -> str: ...
+    def archive(self, *, run_id: str, data_dir: Path) -> OffsiteEvidence: ...
 
 
 AdapterFactory = Callable[[BackupConfig], ManagedBackupAdapter]
@@ -162,7 +163,7 @@ class BackupRunner:
         if all_targets_succeeded and self._offsite_adapter is not None:
             started_at = self._clock()
             try:
-                detail = self._offsite_adapter.archive(
+                evidence = self._offsite_adapter.archive(
                     run_id=manifest.run_id, data_dir=self._config.data_dir
                 )
             except Exception as exc:
@@ -182,7 +183,8 @@ class BackupRunner:
                     status="succeeded",
                     started_at=started_at,
                     finished_at=self._clock(),
-                    detail=detail,
+                    detail=evidence.detail,
+                    evidence={"snapshot_id": evidence.snapshot_id},
                 )
 
         return BackupExecution()

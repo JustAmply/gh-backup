@@ -34,9 +34,15 @@ command argument.
 
 When enabled, a run becomes verified only after:
 
-1. `restic backup` creates a snapshot tagged `gh-backup` and `run:<run-id>`;
+1. `restic backup` snapshots `mirrors/` and `metadata/`, tagged `gh-backup` and
+   `run:<run-id>`;
 2. `restic check` validates repository structure; and
-3. `restic forget --prune` applies daily, weekly, and monthly retention.
+3. `restic forget --prune` applies daily, weekly, and monthly retention; and
+4. the run manifest records the machine-readable Restic snapshot identity.
+
+Mutable files under `state/` and `logs/` are not part of the Restic snapshot.
+The terminal run manifest and the immutable snapshot are linked by run ID and
+snapshot ID instead of duplicating changing state into the snapshot.
 
 Defaults retain seven daily, five weekly, and twelve monthly snapshots. The
 repository needs read, write, and delete access for pruning. Append-only
@@ -45,17 +51,23 @@ should not use this automatic prune policy.
 
 ## Offsite recovery drill
 
-List recovery snapshots:
+Read the exact snapshot identity from the latest recovery point and list its
+Restic metadata:
 
 ```bash
-restic snapshots --tag gh-backup
+snapshot_id="$(python3 -c 'import json; print(json.load(open("/data/state/last-success.json"))["run_stages"]["offsite"]["evidence"]["snapshot_id"])')"
+restic snapshots "${snapshot_id}"
 ```
 
 Restore one snapshot to disposable storage:
 
 ```bash
-restic restore latest --tag gh-backup --target /tmp/gh-backup-restore
+restic restore "${snapshot_id}" --target /tmp/gh-backup-restore
 ```
+
+If the local state volume is unavailable, locate candidate snapshots with
+`restic snapshots --tag gh-backup` and confirm the `run:<run-id>` tag before
+restoring.
 
 Then run the repository restore drill against mirrors under the restored data
 tree. Do not restore directly over the active backup volume.
