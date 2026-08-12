@@ -2,35 +2,23 @@
 
 FROM python:3.14-slim AS python-builder
 
-ARG TARGETARCH
 ARG GITHUB_BACKUP_VERSION=0.61.5
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
 
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-compile \
-        "github-backup==${GITHUB_BACKUP_VERSION}" \
-        "msgpack>=1.2.1" \
-        "setuptools>=78.1.1" \
-    && rm -rf /opt/venv/lib/python3.14/site-packages/pip \
-        /opt/venv/lib/python3.14/site-packages/pip-*.dist-info
+    && /opt/venv/bin/pip install --no-compile "github-backup==${GITHUB_BACKUP_VERSION}"
 
 FROM golang:1.26.5-bookworm AS go-tools-builder
 
 ARG GHORG_VERSION=v1.11.13
-ARG GHORG_X_IMAGE_VERSION=v0.43.0
-ARG GHORG_X_TEXT_VERSION=v0.39.0
 ARG SUPERCRONIC_VERSION=v0.2.47
 
 ENV CGO_ENABLED=0
 ENV GOTOOLCHAIN=local
 
-RUN git clone --branch "${GHORG_VERSION}" --depth 1 https://github.com/gabrie30/ghorg.git /tmp/ghorg \
-    && cd /tmp/ghorg \
-    && go mod edit -require="golang.org/x/image@${GHORG_X_IMAGE_VERSION}" \
-    && go mod edit -require="golang.org/x/text@${GHORG_X_TEXT_VERSION}" \
-    && go build -mod=mod -trimpath -o /go/bin/ghorg . \
+RUN go install "github.com/gabrie30/ghorg@${GHORG_VERSION}" \
     && go install -ldflags "-X main.Version=${SUPERCRONIC_VERSION}" \
     "github.com/aptible/supercronic@${SUPERCRONIC_VERSION}"
 
@@ -54,9 +42,6 @@ RUN apt-get update \
         tzdata \
         util-linux \
     && rm -rf /var/lib/apt/lists/*
-
-RUN rm -rf /usr/local/lib/python3.14/site-packages/pip \
-    /usr/local/lib/python3.14/site-packages/pip-*.dist-info
 
 RUN mkdir -p /app /data/logs /data/metadata /data/mirrors /data/state
 
