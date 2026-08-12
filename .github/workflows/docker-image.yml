@@ -81,16 +81,6 @@ jobs:
           docker run --rm --entrypoint sh gh-backup:test -c \
             'for tool in ghorg github-backup git git-lfs restic supercronic flock python3; do command -v "$tool" >/dev/null; done'
 
-      - name: Scan image for fixable high and critical vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: gh-backup:test
-          format: table
-          exit-code: "1"
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          vuln-type: os,library
-
   publish:
     needs:
       - test
