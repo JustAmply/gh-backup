@@ -250,6 +250,39 @@ class RunManifestTests(unittest.TestCase):
             self.assertIn("snapshot identity", last_run["errors"][0])
             self.assertFalse((state_dir / "last-success.json").exists())
 
+    def test_run_context_requires_an_explicit_offsite_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_dir = Path(temp_dir)
+            timestamp = datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+            manifest = RunManifest.start(
+                state_dir=state_dir,
+                run_id="ambiguous-offsite-run",
+                started_at=timestamp,
+                log_file="/data/logs/ambiguous-offsite.log",
+            )
+            manifest.set_targets(owner="OctoCat", orgs=[])
+            manifest.set_run_context(
+                configuration={},
+                tool_versions={"git": "git version 2.47.3"},
+            )
+            for stage in ("repository_mirror", "lfs", "metadata", "verification"):
+                manifest.record_stage(
+                    target="OctoCat",
+                    stage=stage,
+                    status="succeeded",
+                    started_at=timestamp,
+                    finished_at=timestamp,
+                )
+
+            status = manifest.finish(finished_at=timestamp)
+
+            last_run = json.loads(
+                (state_dir / "last-run.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(status, "failed")
+            self.assertIn("explicit offsite decision", last_run["errors"][0])
+            self.assertFalse((state_dir / "last-success.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

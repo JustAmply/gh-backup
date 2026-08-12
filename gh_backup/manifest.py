@@ -215,7 +215,11 @@ class RunManifest:
         configuration = self._document.get("configuration")
         if not isinstance(configuration, dict):
             errors.append("Recovery qualification requires run configuration")
-        elif configuration.get("offsite_enabled") is True:
+        elif not isinstance(configuration.get("offsite_enabled"), bool):
+            errors.append(
+                "Recovery qualification requires an explicit offsite decision"
+            )
+        elif configuration["offsite_enabled"]:
             offsite = self._document["run_stages"].get("offsite")
             if not isinstance(offsite, dict) or offsite.get("status") != "succeeded":
                 errors.append("Recovery qualification requires offsite to succeed")
