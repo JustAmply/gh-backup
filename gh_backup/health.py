@@ -12,6 +12,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Sequence, TextIO
 
+from gh_backup.configuration import HealthConfig
+
 
 @dataclass(frozen=True)
 class HealthReport:
@@ -167,12 +169,11 @@ def main(
     parser.add_argument("--json", action="store_true", dest="as_json")
     arguments = parser.parse_args(argv)
 
-    data_dir = Path(environment.get("BACKUP_DATA_DIR", "/data"))
-    maximum_age_hours = float(environment.get("BACKUP_MAX_AGE_HOURS", "26"))
+    config = HealthConfig.from_environment(environment)
     report = evaluate_health(
-        state_dir=data_dir / "state",
+        state_dir=config.data_dir / "state",
         now=now(),
-        maximum_age=timedelta(hours=maximum_age_hours),
+        maximum_age=config.maximum_age,
     )
     if arguments.as_json:
         json.dump(report.to_dict(), output, sort_keys=True)

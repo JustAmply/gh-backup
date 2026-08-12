@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
+from gh_backup.configuration import OffsiteConfig, RetentionPolicy
 from gh_backup.process import CommandRunner, command_runner_from_environment
-
-
-@dataclass(frozen=True)
-class RetentionPolicy:
-    daily: int
-    weekly: int
-    monthly: int
 
 
 class ResticOffsiteAdapter:
@@ -63,14 +55,9 @@ class ResticOffsiteAdapter:
         return "encrypted offsite snapshot verified and retained"
 
 
-def offsite_adapter_from_environment(
-    environment: Mapping[str, str],
+def offsite_adapter_from_config(
+    config: OffsiteConfig | None,
 ) -> ResticOffsiteAdapter | None:
-    if not environment.get("RESTIC_REPOSITORY", "").strip():
+    if config is None:
         return None
-    retention = RetentionPolicy(
-        daily=int(environment.get("BACKUP_RETENTION_DAILY", "7")),
-        weekly=int(environment.get("BACKUP_RETENTION_WEEKLY", "5")),
-        monthly=int(environment.get("BACKUP_RETENTION_MONTHLY", "12")),
-    )
-    return ResticOffsiteAdapter(retention=retention)
+    return ResticOffsiteAdapter(retention=config.retention)

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from gh_backup.command_adapter import CommandBackupAdapter
-from gh_backup.runner import BackupConfig
+from gh_backup.configuration import BackupConfig
 
 
 class RecordingCommandRunner:

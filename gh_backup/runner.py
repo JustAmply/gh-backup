@@ -7,60 +7,15 @@ import os
 import secrets
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Mapping, Protocol
+from typing import Protocol
 
+from gh_backup.configuration import BackupConfig, OperationalConfig
 from gh_backup.manifest import RunManifest
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class BackupConfig:
-    owner: str
-    orgs: tuple[str, ...]
-    token: str
-    data_dir: Path
-    include_submodules: bool
-    token_file: Path | None = None
-
-    @classmethod
-    def from_environment(cls, environment: Mapping[str, str]) -> BackupConfig:
-        owner = environment.get("GITHUB_OWNER", "").strip()
-        configured_token_file = environment.get("GITHUB_TOKEN_FILE", "").strip()
-        token_file = Path(configured_token_file) if configured_token_file else None
-        if token_file is not None:
-            token = token_file.read_text(encoding="utf-8").strip("\r\n")
-        else:
-            token = environment.get("GITHUB_TOKEN", "").strip("\r\n")
-        if owner == "change-me":
-            owner = ""
-        if not token:
-            raise ValueError("GitHub token value is empty")
-
-        orgs: list[str] = []
-        seen = {owner.casefold()}
-        for configured_org in environment.get("GITHUB_ORGS", "").split(","):
-            org = configured_org.strip()
-            normalized = org.casefold()
-            if org and normalized not in seen:
-                seen.add(normalized)
-                orgs.append(org)
-
-        include_submodules = environment.get(
-            "GHORG_INCLUDE_SUBMODULES", "true"
-        ).casefold() in {"1", "true", "yes", "on"}
-        return cls(
-            owner=owner,
-            orgs=tuple(orgs),
-            token=token,
-            data_dir=Path(environment.get("BACKUP_DATA_DIR", "/data")),
-            include_submodules=include_submodules,
-            token_file=token_file,
-        )
 
 
 class BackupAdapter(Protocol):
@@ -278,10 +233,11 @@ class BackupRunner:
 
 def main() -> int:
     from gh_backup.command_adapter import CommandBackupAdapter
-    from gh_backup.offsite import offsite_adapter_from_environment
+    from gh_backup.offsite import offsite_adapter_from_config
 
     logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s")
-    config = BackupConfig.from_environment(os.environ)
+    operational_config = OperationalConfig.from_environment(os.environ)
+    config = operational_config.backup
     now = datetime.now().astimezone()
     run_id = os.environ.get(
         "GH_BACKUP_RUN_ID",
@@ -291,7 +247,7 @@ def main() -> int:
         "GH_BACKUP_LOG_FILE", str(config.data_dir / "logs" / f"{run_id}.log")
     )
     adapter = CommandBackupAdapter(config)
-    offsite_adapter = offsite_adapter_from_environment(os.environ)
+    offsite_adapter = offsite_adapter_from_config(operational_config.offsite)
     try:
         return BackupRunner(
             config=config,

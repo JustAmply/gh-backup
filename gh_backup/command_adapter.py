@@ -9,9 +9,9 @@ import tempfile
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from gh_backup.configuration import BackupConfig
 from gh_backup.coverage import CoveragePolicy
 from gh_backup.process import CommandRunner, command_runner_from_environment
-from gh_backup.runner import BackupConfig
 from gh_backup.restore import verify_mirror_restore
 
 

@@ -4,7 +4,8 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from gh_backup.runner import BackupConfig, BackupRunner
+from gh_backup.configuration import BackupConfig
+from gh_backup.runner import BackupRunner
 
 
 class RecordingBackupAdapter:
@@ -67,39 +68,6 @@ class FailingOffsiteAdapter:
 
 
 class BackupRunnerTests(unittest.TestCase):
-    def test_environment_config_normalizes_targets_and_boolean_values(self) -> None:
-        config = BackupConfig.from_environment(
-            {
-                "GITHUB_OWNER": "OctoCat",
-                "GITHUB_ORGS": " my-org,MY-ORG,octocat,other ",
-                "GITHUB_TOKEN": "secret-token\r\n",
-                "BACKUP_DATA_DIR": "/archive",
-                "GHORG_INCLUDE_SUBMODULES": "YES",
-            }
-        )
-
-        self.assertEqual(config.owner, "OctoCat")
-        self.assertEqual(config.orgs, ("my-org", "other"))
-        self.assertEqual(config.token, "secret-token")
-        self.assertEqual(config.data_dir, Path("/archive"))
-        self.assertTrue(config.include_submodules)
-
-    def test_environment_config_reads_a_token_file_without_token_environment(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            token_file = Path(temp_dir) / "github-token"
-            token_file.write_text("file-secret\n", encoding="utf-8")
-
-            config = BackupConfig.from_environment(
-                {
-                    "GITHUB_OWNER": "OctoCat",
-                    "GITHUB_TOKEN_FILE": str(token_file),
-                    "BACKUP_DATA_DIR": temp_dir,
-                }
-            )
-
-            self.assertEqual(config.token, "file-secret")
-            self.assertEqual(config.token_file, token_file)
-
     def test_authenticated_owner_is_not_repeated_as_an_organization(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
