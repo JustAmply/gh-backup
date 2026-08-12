@@ -43,6 +43,12 @@ excluded, including known restoration limitations.
 Checks that establish whether a backup run is complete and internally
 consistent enough to become a recovery point.
 
+### Recovery Qualification
+
+The decision that a backup run contains successful evidence for every required
+backup target and backup stage. Only a qualified backup run can become a
+recovery point.
+
 ### Restore Drill
 
 A non-destructive restoration rehearsal against disposable local storage. It

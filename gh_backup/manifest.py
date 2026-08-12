@@ -6,6 +6,7 @@ import json
 import os
 import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,12 @@ from typing import Any
 
 
 RUN_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+REQUIRED_TARGET_STAGES = (
+    "repository_mirror",
+    "lfs",
+    "metadata",
+    "verification",
+)
 
 
 def _format_timestamp(value: datetime) -> str:
@@ -37,8 +44,8 @@ def _write_json_atomically(path: Path, value: dict[str, Any]) -> None:
 class RunManifest:
     """A backup run whose current state is persisted after every transition."""
 
-    state_dir: Path
-    document: dict[str, Any]
+    _state_dir: Path
+    _document: dict[str, Any]
 
     @classmethod
     def start(
@@ -55,8 +62,8 @@ class RunManifest:
         if run_path.exists():
             raise FileExistsError(f"Run manifest already exists: {run_path}")
         manifest = cls(
-            state_dir=state_dir,
-            document={
+            _state_dir=state_dir,
+            _document={
                 "schema_version": 1,
                 "run_id": run_id,
                 "status": "running",
@@ -73,13 +80,17 @@ class RunManifest:
 
     @property
     def run_id(self) -> str:
-        return str(self.document["run_id"])
+        return str(self._document["run_id"])
+
+    @property
+    def is_running(self) -> bool:
+        return self._document["status"] == "running"
 
     def set_targets(self, *, owner: str, orgs: list[str]) -> None:
         self._ensure_running()
-        self.document["owner"] = owner
-        self.document["orgs"] = list(orgs)
-        self.document["targets"] = {
+        self._document["owner"] = owner
+        self._document["orgs"] = list(orgs)
+        self._document["targets"] = {
             owner: {"kind": "user", "stages": {}},
             **{
                 org: {"kind": "organization", "stages": {}}
@@ -95,14 +106,20 @@ class RunManifest:
         tool_versions: dict[str, str],
     ) -> None:
         self._ensure_running()
-        self.document["configuration"] = dict(configuration)
-        self.document["tool_versions"] = dict(tool_versions)
+        self._document["configuration"] = dict(configuration)
+        self._document["tool_versions"] = dict(tool_versions)
         self._persist()
 
-    def record_error(self, detail: str) -> None:
+    def fail(
+        self,
+        *,
+        errors: str | Iterable[str],
+        finished_at: datetime,
+    ) -> str:
         self._ensure_running()
-        self.document["errors"].append(detail)
-        self._persist()
+        details = [errors] if isinstance(errors, str) else list(errors)
+        self._document["errors"].extend(detail for detail in details if detail)
+        return self._finish(status="failed", finished_at=finished_at)
 
     def record_run_stage(
         self,
@@ -123,7 +140,7 @@ class RunManifest:
         }
         if detail is not None:
             stage_document["detail"] = detail
-        self.document["run_stages"][stage] = stage_document
+        self._document["run_stages"][stage] = stage_document
         self._persist()
 
     def record_stage(
@@ -139,7 +156,7 @@ class RunManifest:
         self._ensure_running()
         if status not in {"succeeded", "failed", "skipped"}:
             raise ValueError(f"Invalid stage status: {status}")
-        target_document = self.document["targets"][target]
+        target_document = self._document["targets"][target]
         stage_document = {
             "status": status,
             "started_at": _format_timestamp(started_at),
@@ -150,24 +167,66 @@ class RunManifest:
         target_document["stages"][stage] = stage_document
         self._persist()
 
-    def finish(self, *, status: str, finished_at: datetime) -> None:
-        if status not in {"verified", "failed", "degraded"}:
-            raise ValueError(f"Invalid terminal run status: {status}")
-        if self.document["status"] != "running":
-            raise RuntimeError("A terminal run manifest cannot transition again")
+    def finish(self, *, finished_at: datetime) -> str:
+        self._ensure_running()
+        qualification_errors = self._qualification_errors()
+        if qualification_errors:
+            self._document["errors"].extend(qualification_errors)
+            status = "failed"
+        else:
+            status = "verified"
+        return self._finish(status=status, finished_at=finished_at)
 
-        self.document["status"] = status
-        self.document["finished_at"] = _format_timestamp(finished_at)
+    def _finish(self, *, status: str, finished_at: datetime) -> str:
+        self._document["status"] = status
+        self._document["finished_at"] = _format_timestamp(finished_at)
         self._persist()
-        _write_json_atomically(self.state_dir / "last-run.json", self.document)
+        _write_json_atomically(self._state_dir / "last-run.json", self._document)
         if status == "verified":
-            _write_json_atomically(self.state_dir / "last-success.json", self.document)
+            _write_json_atomically(
+                self._state_dir / "last-success.json", self._document
+            )
+        return status
+
+    def _qualification_errors(self) -> list[str]:
+        errors: list[str] = []
+        targets = self._document.get("targets")
+        if not isinstance(targets, dict) or not targets:
+            errors.append("Recovery qualification requires at least one backup target")
+        else:
+            for target, target_document in targets.items():
+                stages = target_document.get("stages", {})
+                for stage in REQUIRED_TARGET_STAGES:
+                    stage_document = stages.get(stage)
+                    status = (
+                        stage_document.get("status")
+                        if isinstance(stage_document, dict)
+                        else None
+                    )
+                    if status != "succeeded":
+                        errors.append(
+                            f"Recovery qualification requires {target}/{stage} "
+                            "to succeed"
+                        )
+
+        configuration = self._document.get("configuration")
+        if not isinstance(configuration, dict):
+            errors.append("Recovery qualification requires run configuration")
+        elif configuration.get("offsite_enabled") is True:
+            offsite = self._document["run_stages"].get("offsite")
+            if not isinstance(offsite, dict) or offsite.get("status") != "succeeded":
+                errors.append("Recovery qualification requires offsite to succeed")
+
+        tool_versions = self._document.get("tool_versions")
+        if not isinstance(tool_versions, dict) or not tool_versions:
+            errors.append("Recovery qualification requires backup tool versions")
+        return errors
 
     def _persist(self) -> None:
         _write_json_atomically(
-            self.state_dir / "runs" / f"{self.run_id}.json", self.document
+            self._state_dir / "runs" / f"{self.run_id}.json", self._document
         )
 
     def _ensure_running(self) -> None:
-        if self.document["status"] != "running":
+        if not self.is_running:
             raise RuntimeError("A terminal run manifest cannot transition again")

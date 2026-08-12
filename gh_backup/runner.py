@@ -115,8 +115,7 @@ class BackupRunner:
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             LOGGER.error("GitHub login resolution failed: %s", detail)
-            manifest.record_error(detail)
-            manifest.finish(status="failed", finished_at=self._clock())
+            manifest.fail(errors=detail, finished_at=self._clock())
             return 1
         if self._config.owner and self._config.owner.casefold() != owner.casefold():
             detail = (
@@ -124,8 +123,7 @@ class BackupRunner:
                 f"behind GITHUB_TOKEN ({owner})"
             )
             LOGGER.error("%s", detail)
-            manifest.record_error(detail)
-            manifest.finish(status="failed", finished_at=self._clock())
+            manifest.fail(errors=detail, finished_at=self._clock())
             return 1
         if self._config.owner and self._config.owner != owner:
             LOGGER.warning(
@@ -145,8 +143,7 @@ class BackupRunner:
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             LOGGER.error("backup tool inspection failed: %s", detail)
-            manifest.record_error(detail)
-            manifest.finish(status="failed", finished_at=self._clock())
+            manifest.fail(errors=detail, finished_at=self._clock())
             return 1
         manifest.set_run_context(
             configuration={
@@ -160,8 +157,7 @@ class BackupRunner:
         except Exception as exc:
             detail = str(exc).replace(self._config.token, "***")
             LOGGER.error("backup authentication failed: %s", detail)
-            manifest.record_error(detail)
-            manifest.finish(status="failed", finished_at=self._clock())
+            manifest.fail(errors=detail, finished_at=self._clock())
             return 1
 
         all_targets_succeeded = True
@@ -229,9 +225,8 @@ class BackupRunner:
                     detail=detail,
                 )
 
-        terminal_status = "verified" if all_targets_succeeded else "failed"
-        manifest.finish(status=terminal_status, finished_at=self._clock())
-        return 0 if all_targets_succeeded else 1
+        terminal_status = manifest.finish(finished_at=self._clock())
+        return 0 if terminal_status == "verified" else 1
 
     def _targets(self, owner: str) -> list[tuple[str, str]]:
         targets = [(owner, "user")]

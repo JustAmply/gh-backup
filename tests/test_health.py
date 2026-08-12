@@ -10,6 +10,23 @@ from gh_backup.health import evaluate_health, main
 from gh_backup.manifest import RunManifest
 
 
+def finish_verified(manifest: RunManifest, finished_at: datetime) -> None:
+    manifest.set_targets(owner="OctoCat", orgs=[])
+    manifest.set_run_context(
+        configuration={"offsite_enabled": False},
+        tool_versions={"git": "git version 2.47.3"},
+    )
+    for stage in ("repository_mirror", "lfs", "metadata", "verification"):
+        manifest.record_stage(
+            target="OctoCat",
+            stage=stage,
+            status="succeeded",
+            started_at=finished_at,
+            finished_at=finished_at,
+        )
+    manifest.finish(finished_at=finished_at)
+
+
 class HealthTests(unittest.TestCase):
     def test_health_command_emits_json_and_uses_health_as_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -21,9 +38,7 @@ class HealthTests(unittest.TestCase):
                 started_at=now - timedelta(hours=2),
                 log_file="/data/logs/verified.log",
             )
-            manifest.finish(
-                status="verified", finished_at=now - timedelta(hours=1)
-            )
+            finish_verified(manifest, now - timedelta(hours=1))
             output = io.StringIO()
 
             with contextlib.redirect_stdout(output):
@@ -49,9 +64,7 @@ class HealthTests(unittest.TestCase):
                 started_at=now - timedelta(hours=2, minutes=10),
                 log_file="/data/logs/verified-run.log",
             )
-            manifest.finish(
-                status="verified", finished_at=now - timedelta(hours=2)
-            )
+            finish_verified(manifest, now - timedelta(hours=2))
 
             report = evaluate_health(
                 state_dir=state_dir,
@@ -75,16 +88,17 @@ class HealthTests(unittest.TestCase):
                 started_at=now - timedelta(hours=3),
                 log_file="/data/logs/verified.log",
             )
-            verified.finish(
-                status="verified", finished_at=now - timedelta(hours=2)
-            )
+            finish_verified(verified, now - timedelta(hours=2))
             failed = RunManifest.start(
                 state_dir=state_dir,
                 run_id="failed-run",
                 started_at=now - timedelta(minutes=30),
                 log_file="/data/logs/failed.log",
             )
-            failed.finish(status="failed", finished_at=now - timedelta(minutes=20))
+            failed.fail(
+                errors="simulated backup failure",
+                finished_at=now - timedelta(minutes=20),
+            )
 
             report = evaluate_health(
                 state_dir=state_dir,
@@ -107,9 +121,7 @@ class HealthTests(unittest.TestCase):
                 started_at=now - timedelta(hours=28),
                 log_file="/data/logs/stale.log",
             )
-            manifest.finish(
-                status="verified", finished_at=now - timedelta(hours=27)
-            )
+            finish_verified(manifest, now - timedelta(hours=27))
 
             report = evaluate_health(
                 state_dir=state_dir,
