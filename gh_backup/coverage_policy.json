@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tool": {
     "name": "github-backup",
-    "pinned_version": "0.61.5"
+    "pinned_version": "0.65.1"
   },
   "metadata": {
     "selection": [
@@ -34,8 +34,8 @@
     ]
   },
   "unsupported": {
-    "discussions": "not supported by pinned github-backup 0.61.5",
-    "pull_reviews": "not supported by pinned github-backup 0.61.5",
+    "discussions": "not enabled by the current metadata coverage policy",
+    "pull_reviews": "not enabled by the current metadata coverage policy",
     "actions_artifacts": "requires a separate storage adapter",
     "packages": "requires a separate storage adapter",
     "projects": "no implemented backup adapter",

@@ -165,7 +165,7 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 if [[ "${1:-}" == "--version" ]]; then
-  printf '%s\n' "github-backup 0.61.5"
+  printf '%s\n' "github-backup 0.65.1"
   exit 0
 fi
 if [[ "${1:-}" == "--help" ]]; then
@@ -372,9 +372,32 @@ run_validate_expect_failure() {
   fi
 }
 
+test_failed_startup_backup_keeps_scheduler_running() {
+  local output_file="${TMP_DIR}/entrypoint-startup-failure.log"
+  local status
+
+  set +e
+  (
+    source "${ROOT_DIR}/scripts/entrypoint.sh"
+    validate_configuration() { :; }
+    write_crontab() { printf '%s\n' "/tmp/test.crontab"; }
+    run_backup() { return 1; }
+    start_scheduler() { printf '%s\n' "scheduler started"; }
+    RUN_ON_STARTUP=true main scheduler
+  ) >"${output_file}" 2>&1
+  status=$?
+  set -e
+
+  [[ "${status}" -eq 0 ]] || fail "Expected scheduler startup after failed startup backup"
+  assert_contains "${output_file}" "Startup backup failed with exit code 1"
+  assert_contains "${output_file}" "scheduler started"
+}
+
 main() {
   reset_logs
   write_stubs
+
+  test_failed_startup_backup_keeps_scheduler_running
 
   run_validate_expect_success
   run_validate_expect_success ""

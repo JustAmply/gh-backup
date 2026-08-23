@@ -85,6 +85,7 @@ What happens next:
 
 - the container validates the config
 - it runs one backup immediately if `RUN_ON_STARTUP=true`
+- a failed immediate backup keeps the service unhealthy but does not stop the scheduler
 - it keeps running and executes future backups on the cron schedule
 
 ### 4. Run a Backup Right Now

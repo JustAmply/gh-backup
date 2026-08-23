@@ -47,7 +47,7 @@ class RecordingBackupAdapter:
         self.calls.append(("describe_tools",))
         return {
             "ghorg": "ghorg version 1.11.10",
-            "github-backup": "github-backup 0.61.5",
+            "github-backup": "github-backup 0.65.1",
         }
 
     def mirror_repositories(self, target: str, target_kind: str) -> None:
@@ -180,7 +180,7 @@ class BackupRunnerTests(unittest.TestCase):
                 manifest["tool_versions"],
                 {
                     "ghorg": "ghorg version 1.11.10",
-                    "github-backup": "github-backup 0.61.5",
+                    "github-backup": "github-backup 0.65.1",
                 },
             )
             self.assertEqual(

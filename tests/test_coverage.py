@@ -15,7 +15,7 @@ class CoveragePolicyTests(unittest.TestCase):
         self.assertIn("--followers", user_args)
         self.assertEqual(
             policy.unsupported["discussions"],
-            "not supported by pinned github-backup 0.61.5",
+            "not enabled by the current metadata coverage policy",
         )
         self.assertIn("pull_reviews", policy.unsupported)
 

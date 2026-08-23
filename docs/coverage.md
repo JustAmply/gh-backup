@@ -22,8 +22,8 @@ match it.
 
 ## Known exclusions
 
-- Discussions and pull-request review decisions are not supported by the
-  pinned `github-backup` 0.61.5 interface.
+- Discussions and pull-request review decisions are not enabled by the current
+  metadata coverage policy.
 - GitHub Actions artifacts and packages require a separate storage adapter.
 - Projects have no implemented backup adapter.
 - Webhooks are intentionally outside the recovery contract.
