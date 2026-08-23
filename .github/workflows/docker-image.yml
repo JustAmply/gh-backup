@@ -9,6 +9,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - "gh_backup/**"
+      - "requirements/**"
       - "scripts/**"
       - "tests/**"
   push:
@@ -23,6 +24,7 @@ on:
       - "Dockerfile"
       - "docker-compose.yml"
       - "gh_backup/**"
+      - "requirements/**"
       - "scripts/**"
       - "tests/**"
 

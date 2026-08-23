@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from gh_backup.configuration import BackupConfig
+from gh_backup.coverage import load_pinned_version
 from gh_backup.manifest import RunManifest
 from gh_backup.offsite import OffsiteEvidence
 from gh_backup.runner import BackupRunner
 
 
 FIXED_TIME = datetime(2026, 7, 16, 12, 0, tzinfo=UTC)
+GITHUB_BACKUP_VERSION = load_pinned_version()
 
 
 def start_manifest(data_dir: Path, run_id: str, log_name: str) -> RunManifest:
@@ -47,7 +49,7 @@ class RecordingBackupAdapter:
         self.calls.append(("describe_tools",))
         return {
             "ghorg": "ghorg version 1.11.10",
-            "github-backup": "github-backup 0.65.1",
+            "github-backup": f"github-backup {GITHUB_BACKUP_VERSION}",
         }
 
     def mirror_repositories(self, target: str, target_kind: str) -> None:
@@ -180,7 +182,7 @@ class BackupRunnerTests(unittest.TestCase):
                 manifest["tool_versions"],
                 {
                     "ghorg": "ghorg version 1.11.10",
-                    "github-backup": "github-backup 0.65.1",
+                    "github-backup": f"github-backup {GITHUB_BACKUP_VERSION}",
                 },
             )
             self.assertEqual(

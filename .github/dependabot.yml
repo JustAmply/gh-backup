@@ -9,6 +9,21 @@ multi-ecosystem-groups:
       timezone: "Europe/Berlin"
 
 updates:
+  - package-ecosystem: "pip"
+    directory: "/requirements"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 3
+    allow:
+      - dependency-name: "github-backup"
+    commit-message:
+      prefix: "chore(deps)"
+
   - package-ecosystem: "docker"
     directory: "/"
     patterns:

@@ -3,8 +3,11 @@
 The machine-readable source of truth is
 [`gh_backup/coverage_policy.json`](../gh_backup/coverage_policy.json). The
 metadata adapter builds its command arguments from that file, and `validate`
-checks that the installed `github-backup` version and command options still
-match it.
+checks that the installed `github-backup` command options still match it. The
+installed version is pinned once in
+[`requirements/requirements.txt`](../requirements/requirements.txt), which
+Dependabot checks weekly. Update pull requests must pass the same container
+validation before they can be merged.
 
 ## Included and verified
 

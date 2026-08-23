@@ -6,6 +6,10 @@ from pathlib import Path
 
 from gh_backup.command_adapter import CommandBackupAdapter
 from gh_backup.configuration import BackupConfig
+from gh_backup.coverage import load_pinned_version
+
+
+GITHUB_BACKUP_VERSION = load_pinned_version()
 
 
 class RecordingCommandRunner:
@@ -16,7 +20,9 @@ class RecordingCommandRunner:
         self.calls.append(args)
         versions = {
             ("ghorg", "version"): "ghorg version 1.11.10\n",
-            ("github-backup", "--version"): "github-backup 0.65.1\n",
+            ("github-backup", "--version"): (
+                f"github-backup {GITHUB_BACKUP_VERSION}\n"
+            ),
             ("git", "--version"): "git version 2.47.3\n",
             ("git-lfs", "version"): "git-lfs/3.6.1\n",
             ("restic", "version"): "restic 0.18.0\n",
@@ -45,7 +51,7 @@ class CommandBackupAdapterTests(unittest.TestCase):
                 versions,
                 {
                     "ghorg": "ghorg version 1.11.10",
-                    "github-backup": "github-backup 0.65.1",
+                    "github-backup": f"github-backup {GITHUB_BACKUP_VERSION}",
                     "git": "git version 2.47.3",
                     "git-lfs": "git-lfs/3.6.1",
                     "restic": "restic 0.18.0",

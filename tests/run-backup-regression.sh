@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GITHUB_BACKUP_VERSION="$(sed -n 's/^github-backup==//p' "${ROOT_DIR}/requirements/requirements.txt")"
+export GITHUB_BACKUP_VERSION
 TMP_DIR="$(mktemp -d)"
 TEST_BIN_DIR="${TMP_DIR}/bin"
 TEST_LOG_DIR="${TMP_DIR}/logs"
@@ -165,7 +167,7 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 if [[ "${1:-}" == "--version" ]]; then
-  printf '%s\n' "github-backup 0.65.1"
+  printf '%s\n' "github-backup ${GITHUB_BACKUP_VERSION}"
   exit 0
 fi
 if [[ "${1:-}" == "--help" ]]; then

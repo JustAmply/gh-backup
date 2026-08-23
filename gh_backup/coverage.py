@@ -10,6 +10,27 @@ from typing import Any
 
 from gh_backup.process import CommandRunner, command_runner_from_environment
 
+GITHUB_BACKUP_REQUIREMENT = (
+    Path(__file__).resolve().parent.parent / "requirements" / "requirements.txt"
+)
+
+
+def load_pinned_version(path: Path = GITHUB_BACKUP_REQUIREMENT) -> str:
+    lines = [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    prefix = "github-backup=="
+    if len(lines) != 1 or not lines[0].startswith(prefix):
+        raise ValueError(
+            f"{path} must contain exactly one github-backup==VERSION requirement"
+        )
+    version = lines[0][len(prefix) :]
+    if not version or any(character.isspace() for character in version):
+        raise ValueError(f"Invalid github-backup version in {path}")
+    return version
+
 
 @dataclass(frozen=True)
 class CoveragePolicy:
@@ -29,7 +50,7 @@ class CoveragePolicy:
         return cls(
             schema_version=int(document["schema_version"]),
             tool_name=str(document["tool"]["name"]),
-            pinned_version=str(document["tool"]["pinned_version"]),
+            pinned_version=load_pinned_version(),
             selection=tuple(document["metadata"]["selection"]),
             common=tuple(document["metadata"]["common"]),
             user_only=tuple(document["metadata"]["user_only"]),

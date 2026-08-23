@@ -1,6 +1,12 @@
+import tempfile
 import unittest
+from pathlib import Path
 
-from gh_backup.coverage import CoveragePolicy, missing_required_options
+from gh_backup.coverage import (
+    CoveragePolicy,
+    load_pinned_version,
+    missing_required_options,
+)
 
 
 class CoveragePolicyTests(unittest.TestCase):
@@ -18,6 +24,21 @@ class CoveragePolicyTests(unittest.TestCase):
             "not enabled by the current metadata coverage policy",
         )
         self.assertIn("pull_reviews", policy.unsupported)
+        self.assertEqual(policy.pinned_version, load_pinned_version())
+
+    def test_pinned_version_requires_one_exact_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requirement = Path(temp_dir) / "github-backup.txt"
+            requirement.write_text(
+                "# Runtime backup client\ngithub-backup==1.2.3\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(load_pinned_version(requirement), "1.2.3")
+
+            requirement.write_text("github-backup>=1.2.3\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exactly one"):
+                load_pinned_version(requirement)
 
     def test_capability_check_reports_options_missing_from_pinned_tool(self) -> None:
         policy = CoveragePolicy.load_default()

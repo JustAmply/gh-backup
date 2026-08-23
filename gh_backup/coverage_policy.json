@@ -1,8 +1,7 @@
 {
   "schema_version": 1,
   "tool": {
-    "name": "github-backup",
-    "pinned_version": "0.65.1"
+    "name": "github-backup"
   },
   "metadata": {
     "selection": [

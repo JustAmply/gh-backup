@@ -2,13 +2,14 @@
 
 FROM python:3.14-slim AS python-builder
 
-ARG GITHUB_BACKUP_VERSION=0.65.1
-
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
 
+COPY --link requirements/requirements.txt /tmp/github-backup-requirements.txt
+
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-compile "github-backup==${GITHUB_BACKUP_VERSION}"
+    && /opt/venv/bin/pip install --no-compile \
+        --requirement /tmp/github-backup-requirements.txt
 
 FROM golang:1.26.5-bookworm AS go-tools-builder
 
@@ -52,6 +53,7 @@ RUN groupadd --gid 10001 gh-backup \
 COPY --link --from=python-builder /opt/venv /opt/venv
 COPY --link --from=go-tools-builder /go/bin/ghorg /go/bin/supercronic /usr/local/bin/
 COPY --link gh_backup /opt/gh-backup/gh_backup
+COPY --link requirements /opt/gh-backup/requirements
 COPY --link --chmod=0755 scripts/entrypoint.sh scripts/run-backup.sh scripts/validate.sh /usr/local/bin/
 
 WORKDIR /app
