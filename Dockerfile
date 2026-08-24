@@ -11,7 +11,7 @@ RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-compile \
         --requirement /tmp/github-backup-requirements.txt
 
-FROM golang:1.26.5-bookworm AS go-tools-builder
+FROM golang:1.27.0-bookworm AS go-tools-builder
 
 ARG GHORG_VERSION=v1.11.13
 ARG SUPERCRONIC_VERSION=v0.2.47
