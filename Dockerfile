@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.14-slim AS python-builder
+FROM python:3.15-slim AS python-builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_NO_CACHE_DIR=1
@@ -23,7 +23,7 @@ RUN go install "github.com/gabrie30/ghorg@${GHORG_VERSION}" \
     && go install -ldflags "-X main.Version=${SUPERCRONIC_VERSION}" \
     "github.com/aptible/supercronic@${SUPERCRONIC_VERSION}"
 
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
