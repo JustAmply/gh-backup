@@ -2,6 +2,7 @@ version: 2
 
 multi-ecosystem-groups:
   infrastructure:
+    open-pull-requests-limit: 2
     schedule:
       interval: "weekly"
       day: "monday"
@@ -16,9 +17,11 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Europe/Berlin"
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 2
     cooldown:
-      default-days: 3
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 2
     allow:
       - dependency-name: "github-backup"
     commit-message:
@@ -29,9 +32,11 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "infrastructure"
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 2
     cooldown:
-      default-days: 3
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 2
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -45,9 +50,11 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "infrastructure"
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 2
     cooldown:
-      default-days: 3
+      semver-major-days: 7
+      semver-minor-days: 3
+      semver-patch-days: 2
     commit-message:
       prefix: "chore(ci)"
     groups:
