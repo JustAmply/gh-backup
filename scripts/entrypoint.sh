@@ -17,7 +17,7 @@ write_crontab() {
 
   cat >"${cron_file}" <<EOF
 SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PATH=${PATH}
 ${BACKUP_CRON:-17 2 * * *} /usr/local/bin/run-backup.sh
 EOF
 

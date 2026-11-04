@@ -234,6 +234,9 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 if [[ "${1:-}" == "-test" ]]; then
+  if [[ -n "${TEST_LOG_DIR:-}" ]]; then
+    cp "$2" "${TEST_LOG_DIR}/validated.crontab"
+  fi
   exit 0
 fi
 printf 'unexpected supercronic args: %s\n' "$*" >&2
@@ -344,6 +347,7 @@ run_validate_expect_success() {
   local owner="${1:-octocat}"
 
   env \
+    TEST_LOG_DIR="${TEST_LOG_DIR}" \
     PATH="${TEST_BIN_DIR}:${PATH}" \
     GH_BACKUP_RUNNER_PYTHON="python" \
     GH_BACKUP_COMMAND_SHELL="$(cygpath -w /usr/bin/bash 2>/dev/null || true)" \
@@ -374,6 +378,22 @@ run_validate_expect_failure() {
   fi
 }
 
+test_scheduled_backup_preserves_the_runtime_tool_path() {
+  local cron_file scheduled_path
+
+  (
+    source "${ROOT_DIR}/scripts/entrypoint.sh"
+    export PATH="${TEST_BIN_DIR}:${PATH}"
+    export TEST_LOG_DIR
+    cron_file="$(write_crontab)"
+    scheduled_path="$(sed -n 's/^PATH=//p' "${cron_file}")"
+    env PATH="${scheduled_path}" bash -c 'github-backup --version' \
+      > "${TMP_DIR}/scheduled-tool-version.log"
+  ) || fail "Expected scheduled backup to resolve tools from the runtime PATH"
+
+  assert_contains "${TMP_DIR}/scheduled-tool-version.log" "github-backup ${GITHUB_BACKUP_VERSION}"
+}
+
 test_failed_startup_backup_keeps_scheduler_running() {
   local output_file="${TMP_DIR}/entrypoint-startup-failure.log"
   local status
@@ -399,9 +419,11 @@ main() {
   reset_logs
   write_stubs
 
+  test_scheduled_backup_preserves_the_runtime_tool_path
   test_failed_startup_backup_keeps_scheduler_running
 
   run_validate_expect_success
+  assert_contains "${TEST_LOG_DIR}/validated.crontab" "PATH=${TEST_BIN_DIR}:"
   run_validate_expect_success ""
   run_validate_expect_success "change-me"
   run_validate_expect_failure "${TMP_DIR}/validate-empty-token.log" "octocat" ""

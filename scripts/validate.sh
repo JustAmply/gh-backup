@@ -21,7 +21,7 @@ trap 'rm -f "${tmp_cron}"' EXIT
 
 cat > "${tmp_cron}" <<EOF
 SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PATH=${PATH}
 ${BACKUP_CRON} /usr/local/bin/run-backup.sh
 EOF
 
