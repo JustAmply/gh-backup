@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from gh_backup.command_adapter import CommandBackupAdapter
 from gh_backup.configuration import BackupConfig
@@ -167,6 +168,27 @@ class CommandBackupAdapterTests(unittest.TestCase):
                 ],
                 str(Path(temp_dir) / "metadata" / "my-org"),
             )
+
+    def test_metadata_timeout_reports_failure_without_command_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            commands = Mock(
+                side_effect=subprocess.TimeoutExpired(["github-backup", "hidden"], 14_400)
+            )
+            adapter = CommandBackupAdapter(
+                BackupConfig(
+                    owner="OctoCat",
+                    orgs=(),
+                    token="secret-token",
+                    data_dir=Path(temp_dir),
+                    include_submodules=True,
+                ),
+                run_command=commands,
+            )
+            self.addCleanup(adapter.cleanup)
+
+            with self.assertRaisesRegex(RuntimeError, "^Metadata export exceeded 14400 seconds$"):
+                adapter.export_metadata("OctoCat", "user")
+            self.assertEqual(commands.call_args.kwargs["timeout"], 14_400)
 
     def test_lfs_collection_and_verification_check_each_discovered_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

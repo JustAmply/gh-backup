@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import subprocess
 import tempfile
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -13,6 +14,9 @@ from gh_backup.configuration import BackupConfig
 from gh_backup.coverage import CoveragePolicy
 from gh_backup.process import CommandRunner, command_runner_from_environment
 from gh_backup.restore import verify_mirror_restore
+
+
+METADATA_EXPORT_TIMEOUT_SECONDS = 4 * 60 * 60
 
 
 class CommandBackupAdapter:
@@ -154,7 +158,14 @@ class CommandBackupAdapter:
         if target_kind == "organization":
             args.append("--organization")
         args.append(target)
-        self._run_command(args, check=True, text=True)
+        try:
+            self._run_command(
+                args, check=True, text=True, timeout=METADATA_EXPORT_TIMEOUT_SECONDS
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"Metadata export exceeded {METADATA_EXPORT_TIMEOUT_SECONDS} seconds"
+            ) from None
 
     def fetch_lfs(self, target: str) -> None:
         for repository in self._bare_repositories(target):

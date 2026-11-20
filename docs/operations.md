@@ -12,6 +12,10 @@ docker compose run --rm gh-backup health --json
 `health` exits non-zero when no verified recovery point exists, the latest run
 failed, or freshness exceeds `BACKUP_MAX_AGE_HOURS`.
 
+A metadata export has a four-hour deadline per backup target, including any API
+rate-limit waits. Exceeding it fails the metadata stage and preserves the latest
+verified recovery point. The next scheduled run can acquire the backup lock.
+
 ## Encrypted offsite snapshots
 
 Offsite storage is disabled unless `RESTIC_REPOSITORY` is set. Initialize the
