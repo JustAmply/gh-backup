@@ -1,1 +1,1 @@
-github-backup==0.65.1
+github-backup==0.69.1
